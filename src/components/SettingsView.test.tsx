@@ -16,8 +16,6 @@ vi.mock('../lib/audio', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  window.confirm = vi.fn(() => true);
-  window.alert = vi.fn();
 });
 
 const defaultProps = {
@@ -60,18 +58,27 @@ describe('SettingsView — model selection', () => {
 });
 
 describe('SettingsView — reset stats', () => {
-  it('clicking Reset All Stats when confirm returns true calls resetStats once', async () => {
+  it('clicking Reset All Stats opens the dialog so a Reset confirm button becomes visible', async () => {
+    render(<SettingsView {...defaultProps} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await userEvent.click(screen.getByText('Reset All Stats'));
+    expect(screen.getByRole('button', { name: 'Reset' })).toBeDefined();
+  });
+
+  it('clicking the Reset confirm button calls resetStats once', async () => {
     const reset = vi.fn();
     render(<SettingsView {...defaultProps} resetStats={reset} />);
     await userEvent.click(screen.getByText('Reset All Stats'));
+    await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
-  it('clicking Reset All Stats when confirm returns false does NOT call resetStats', async () => {
-    window.confirm = vi.fn(() => false);
+  it('clicking Keep my stats does NOT call resetStats and closes the dialog', async () => {
     const reset = vi.fn();
     render(<SettingsView {...defaultProps} resetStats={reset} />);
     await userEvent.click(screen.getByText('Reset All Stats'));
+    await userEvent.click(screen.getByRole('button', { name: 'Keep my stats' }));
     expect(reset).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
   });
 });

@@ -49,6 +49,10 @@ function base64ToInt16Array(base64: string) {
   return new Int16Array(bytes.buffer);
 }
 
+/**
+ * A Gemini Live voice-practice tutor that fetches a short-lived server token,
+ * streams microphone audio over a WebSocket, and plays back the tutor's audio with live transcripts.
+ */
 export default function TutorChat() {
   const [status, setStatus] = useState<TutorStatus>('idle');
   const [error, setError] = useState('');

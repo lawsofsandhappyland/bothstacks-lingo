@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
+import ConfirmDialog from './ConfirmDialog';
 
 /**
  * Props for the SettingsView component.
@@ -19,19 +21,13 @@ interface SettingsViewProps {
  * Settings screen providing Gemini tutor model selection, a profile stats summary (XP, streak, lives),
  * and a reset-stats danger action.
  */
-export default function SettingsView({ 
-  stats, 
-  tutorModel, 
-  setTutorModel, 
-  resetStats 
+export default function SettingsView({
+  stats,
+  tutorModel,
+  setTutorModel,
+  resetStats
 }: SettingsViewProps) {
-  const handleReset = () => {
-    if (confirm("Are you sure you want to reset your stats? This will set your XP to 0 and restore your 5 lives.")) {
-      soundEffects.playHeartLost();
-      resetStats();
-      alert("Stats successfully reset!");
-    }
-  };
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <div className="animate-fade-in-up w-full max-w-lg px-4 py-8 mx-auto">
@@ -107,13 +103,22 @@ export default function SettingsView({
         <div className="flex flex-col gap-3">
           <h3 className="ui-label text-red-500">Danger Zone</h3>
           <button
-            onClick={handleReset}
+            onClick={() => { soundEffects.playTap(); setConfirmOpen(true); }}
             className="pill-button bg-red-600 border-red-950 text-ghost-white hover:bg-red-500"
           >
             Reset All Stats
           </button>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Reset all stats?"
+        message="This sets your XP to 0 and restores your 5 lives. This cannot be undone."
+        confirmLabel="Reset"
+        cancelLabel="Keep my stats"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => { soundEffects.playHeartLost(); resetStats(); setConfirmOpen(false); }}
+      />
     </div>
   );
 }

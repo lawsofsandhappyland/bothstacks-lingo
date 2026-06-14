@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Lesson, UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
 
+/**
+ * Props for the LessonRunner component.
+ */
 interface LessonRunnerProps {
   lesson: Lesson;
   stats: UserStats;
@@ -33,6 +36,10 @@ function normalizeAnswer(value: string) {
   return value.replace(/[.,#!$%&;:{}=_`~()-]/g, "").toLowerCase();
 }
 
+/**
+ * Renders and runs a single lesson's exercises, tracking answers and correctness,
+ * managing remaining lives, and reporting completion and life-loss back to the parent.
+ */
 export default function LessonRunner({ lesson, stats, onLessonComplete, onLoseLife, onQuit }: LessonRunnerProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
