@@ -49,6 +49,74 @@ describe('computeLessonCompletion', () => {
   });
 });
 
+describe('streak freeze mechanic', () => {
+  const now = new Date(2026, 5, 14, 12, 0, 0);
+
+  it('(p) gap with NO freezes: streak resets to 1, streakFreezes stays 0', () => {
+    const oldDate = new Date(2026, 5, 1);
+    const base: UserStats = { xp: 0, streak: 5, lives: 5, lastActiveDate: oldDate.toDateString(), streakFreezes: 0 };
+    const result = computeLessonCompletion(base, [], 10, 20, now);
+    expect(result.stats.streak).toBe(1);
+    expect(result.stats.streakFreezes).toBe(0);
+  });
+
+  it('(q) one missed day WITH freezes: one freeze consumed, streak bridged to streak+1', () => {
+    const lastActive = new Date(2026, 5, 12); // 1 missed day (Jun 13) before now (Jun 14)
+    const base: UserStats = { xp: 0, streak: 5, lives: 5, lastActiveDate: lastActive.toDateString(), streakFreezes: 2 };
+    const result = computeLessonCompletion(base, [], 11, 20, now);
+    expect(result.stats.streak).toBe(6);
+    expect(result.stats.streakFreezes).toBe(1);
+    expect(result.stats.lastActiveDate).toBe(now.toDateString());
+  });
+
+  it('(r) earning: consecutive day from streak 6 -> 7 grants a freeze', () => {
+    const yesterday = new Date(2026, 5, 13, 12, 0, 0);
+    const base: UserStats = { xp: 0, streak: 6, lives: 5, lastActiveDate: yesterday.toDateString(), streakFreezes: 0 };
+    const result = computeLessonCompletion(base, [], 12, 20, now);
+    expect(result.stats.streak).toBe(7);
+    expect(result.stats.streakFreezes).toBe(1);
+  });
+
+  it('(s) earn cap: streak 6 -> 7 with streakFreezes already 3 -> stays 3', () => {
+    const yesterday = new Date(2026, 5, 13, 12, 0, 0);
+    const base: UserStats = { xp: 0, streak: 6, lives: 5, lastActiveDate: yesterday.toDateString(), streakFreezes: 3 };
+    const result = computeLessonCompletion(base, [], 13, 20, now);
+    expect(result.stats.streak).toBe(7);
+    expect(result.stats.streakFreezes).toBe(3);
+  });
+
+  it('(t) same-day repeat: streak and streakFreezes unchanged', () => {
+    const base: UserStats = { xp: 0, streak: 4, lives: 5, lastActiveDate: now.toDateString(), streakFreezes: 2 };
+    const result = computeLessonCompletion(base, [], 14, 20, now);
+    expect(result.stats.streak).toBe(4);
+    expect(result.stats.streakFreezes).toBe(2);
+  });
+
+  it('(u) freeze-bridge landing on a 7-day multiple does NOT re-grant the consumed freeze', () => {
+    const lastActive = new Date(2026, 5, 12); // 1 missed day
+    const base: UserStats = { xp: 0, streak: 6, lives: 5, lastActiveDate: lastActive.toDateString(), streakFreezes: 1 };
+    const result = computeLessonCompletion(base, [], 15, 20, now);
+    expect(result.stats.streak).toBe(7);
+    expect(result.stats.streakFreezes).toBe(0);
+  });
+
+  it('(v) long gap with INSUFFICIENT freezes resets streak and keeps freezes', () => {
+    const lastActive = new Date(2026, 5, 1); // 12 missed days, only 2 freezes
+    const base: UserStats = { xp: 0, streak: 9, lives: 5, lastActiveDate: lastActive.toDateString(), streakFreezes: 2 };
+    const result = computeLessonCompletion(base, [], 16, 20, now);
+    expect(result.stats.streak).toBe(1);
+    expect(result.stats.streakFreezes).toBe(2);
+  });
+
+  it('(w) two missed days consume two freezes and bridge the streak', () => {
+    const lastActive = new Date(2026, 5, 11); // 2 missed days (Jun 12, Jun 13) before now (Jun 14)
+    const base: UserStats = { xp: 0, streak: 4, lives: 5, lastActiveDate: lastActive.toDateString(), streakFreezes: 2 };
+    const result = computeLessonCompletion(base, [], 17, 20, now);
+    expect(result.stats.streak).toBe(5);
+    expect(result.stats.streakFreezes).toBe(0);
+  });
+});
+
 describe('loseLife', () => {
   it('(g) decrements lives by 1', () => {
     const base: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null };

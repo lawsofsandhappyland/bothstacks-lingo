@@ -7,6 +7,8 @@ export interface UserStats {
   streak: number;
   lives: number;
   lastActiveDate: string | null;
+  /** Number of streak freezes the user holds; a freeze bridges a missed day so the streak is not lost. Optional for backward compatibility. */
+  streakFreezes?: number;
 }
 
 export type AchievementKind = 'xp' | 'streak' | 'lessons';

@@ -192,6 +192,10 @@ export default function App() {
                 <span className="text-base select-none">🔥</span>
                 <span className="font-mono text-sm font-black text-fuchsia-accent">{stats.streak}</span>
               </div>
+              <div className="flex items-center gap-1" title="Streak Freezes">
+                <span className="text-base select-none">❄️</span>
+                <span className="font-mono text-sm font-black text-electric-blue">{stats.streakFreezes ?? 0}</span>
+              </div>
               <div className="flex items-center gap-1" title="XP Gained">
                 <span className="text-base select-none">🎯</span>
                 <span className="font-mono text-sm font-black text-flame-orange">{stats.xp} XP</span>
