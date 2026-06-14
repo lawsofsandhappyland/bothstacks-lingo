@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { getAuthReady } from './lib/firebase';
@@ -10,6 +10,7 @@ vi.mock('./components/PathView', () => ({ default: () => <div data-testid="path-
 vi.mock('./components/LessonRunner', () => ({ default: () => <div data-testid="lesson-runner" /> }));
 vi.mock('./components/TutorChat', () => ({ default: () => <div data-testid="tutor-chat" /> }));
 vi.mock('./components/SettingsView', () => ({ default: () => <div data-testid="settings-view" /> }));
+vi.mock('./components/AchievementsView', () => ({ default: () => <div data-testid="achievements-view" /> }));
 
 vi.mock('./lib/audio', () => ({
   soundEffects: {
@@ -47,7 +48,7 @@ describe('App', () => {
     } as never);
 
     render(<App />);
-    await waitFor(() => screen.getByTestId('path-view'));
+    await screen.findByTestId('path-view');
     expect(screen.getByText('250 XP')).toBeTruthy();
   });
 
@@ -59,7 +60,7 @@ describe('App', () => {
     vi.mocked(getAuthReady).mockResolvedValue(null);
 
     render(<App />);
-    await waitFor(() => screen.getByTestId('path-view'));
+    await screen.findByTestId('path-view');
     expect(screen.getByText('99 XP')).toBeTruthy();
     expect(vi.mocked(loadUserDoc)).not.toHaveBeenCalled();
   });
@@ -75,7 +76,7 @@ describe('App', () => {
     } as never);
 
     render(<App />);
-    await waitFor(() => screen.getByTestId('path-view'));
+    await screen.findByTestId('path-view');
 
     const tutorButton = screen.getByText('Tutor').closest('button');
     await user.click(tutorButton!);
@@ -97,7 +98,7 @@ describe('App', () => {
     } as never);
 
     render(<App />);
-    await waitFor(() => screen.getByTestId('path-view'));
+    await screen.findByTestId('path-view');
 
     expect(screen.getByText(onboardingSlides[0].title)).toBeTruthy();
   });

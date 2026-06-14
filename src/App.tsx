@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { ViewType, UserStats } from './types';
 import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats } from './lib/progress';
 import { lessonsData } from './lib/lessons';
@@ -6,13 +6,14 @@ import { soundEffects } from './lib/audio';
 import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
 
-// Subcomponents
-import PathView from './components/PathView';
-import LessonRunner from './components/LessonRunner';
-import TutorChat from './components/TutorChat';
-import SettingsView from './components/SettingsView';
-import AchievementsView from './components/AchievementsView';
 import Onboarding from './components/Onboarding';
+
+// Lazy-loaded route views (code-split into separate chunks)
+const PathView = lazy(() => import('./components/PathView'));
+const LessonRunner = lazy(() => import('./components/LessonRunner'));
+const TutorChat = lazy(() => import('./components/TutorChat'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const AchievementsView = lazy(() => import('./components/AchievementsView'));
 
 const STORAGE_KEYS = {
   STATS: 'bothlingo_stats',
@@ -226,33 +227,35 @@ export default function App() {
       )}
 
       <main className="flex-grow flex items-center justify-center">
-        {view === 'lesson' && activeLesson ? (
-          <LessonRunner
-            lesson={activeLesson}
-            stats={stats}
-            onLessonComplete={handleLessonComplete}
-            onLoseLife={handleLoseLife}
-            onQuit={() => { soundEffects.playTap(); setActiveLessonId(null); setView('path'); }}
-          />
-        ) : view === 'path' ? (
-          <PathView
-            lessons={lessonsData}
-            stats={stats}
-            completedLessons={completedLessons}
-            onStartLesson={(id) => { setActiveLessonId(id); setView('lesson'); }}
-          />
-        ) : view === 'tutor' ? (
-          <TutorChat />
-        ) : view === 'achievements' ? (
-          <AchievementsView stats={stats} completedLessons={completedLessons} />
-        ) : (
-          <SettingsView
-            stats={stats}
-            tutorModel={tutorModel}
-            setTutorModel={handleSetTutorModel}
-            resetStats={handleResetStats}
-          />
-        )}
+        <Suspense fallback={<div className="flex-grow flex items-center justify-center"><p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p></div>}>
+          {view === 'lesson' && activeLesson ? (
+            <LessonRunner
+              lesson={activeLesson}
+              stats={stats}
+              onLessonComplete={handleLessonComplete}
+              onLoseLife={handleLoseLife}
+              onQuit={() => { soundEffects.playTap(); setActiveLessonId(null); setView('path'); }}
+            />
+          ) : view === 'path' ? (
+            <PathView
+              lessons={lessonsData}
+              stats={stats}
+              completedLessons={completedLessons}
+              onStartLesson={(id) => { setActiveLessonId(id); setView('lesson'); }}
+            />
+          ) : view === 'tutor' ? (
+            <TutorChat />
+          ) : view === 'achievements' ? (
+            <AchievementsView stats={stats} completedLessons={completedLessons} />
+          ) : (
+            <SettingsView
+              stats={stats}
+              tutorModel={tutorModel}
+              setTutorModel={handleSetTutorModel}
+              resetStats={handleResetStats}
+            />
+          )}
+        </Suspense>
       </main>
 
       {view !== 'lesson' && (

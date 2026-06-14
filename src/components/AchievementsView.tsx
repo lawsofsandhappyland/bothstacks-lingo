@@ -1,11 +1,18 @@
 import type { UserStats } from '../types';
 import { evaluateAchievements } from '../lib/achievements';
 
+/**
+ * Props for AchievementsView component.
+ */
 interface AchievementsViewProps {
   stats: UserStats;
   completedLessons: number[];
 }
 
+/**
+ * A grid of achievement badges showing unlocked progress, with locked badges muted.
+ * Badges are computed from the user's stats and completed lessons.
+ */
 export default function AchievementsView({ stats, completedLessons }: AchievementsViewProps) {
   const achievements = evaluateAchievements(stats, completedLessons);
   const unlocked = achievements.filter(a => a.unlocked).length;

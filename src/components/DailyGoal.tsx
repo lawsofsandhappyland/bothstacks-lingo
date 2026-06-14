@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react';
 import type { UserStats } from '../types';
 import { dailyGoalProgress } from '../lib/progress';
 
+/**
+ * Props for DailyGoal component.
+ */
 interface DailyGoalProps {
   stats: UserStats;
 }
 
+/**
+ * A compact daily-XP-goal progress bar that refreshes across the midnight day boundary.
+ */
 export default function DailyGoal({ stats }: DailyGoalProps) {
   // Re-render on tab focus and periodically so the goal resets when the day
   // rolls over while the app stays open (dailyGoalProgress keys off the date).

@@ -1,3 +1,6 @@
+/**
+ * Props for ConfirmDialog component.
+ */
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
@@ -8,6 +11,9 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
+/**
+ * A reusable accessible confirmation modal (role=dialog) with confirm and cancel actions.
+ */
 export default function ConfirmDialog({
   open,
   title,

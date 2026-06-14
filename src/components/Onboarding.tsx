@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
 import { onboardingSlides } from '../lib/onboardingSlides';
 
+/**
+ * Props for Onboarding component.
+ */
 interface OnboardingProps {
   onComplete: () => void;
 }
 
+/**
+ * A first-run full-screen slide overlay introducing the app, calling onComplete when finished or skipped.
+ */
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [index, setIndex] = useState(0);
 
