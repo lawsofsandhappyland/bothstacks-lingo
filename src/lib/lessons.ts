@@ -1,5 +1,8 @@
 import type { Lesson } from '../types';
 
+/**
+ * The ordered catalog of Spanish lessons and their exercises.
+ */
 export const lessonsData: Lesson[] = [
   {
     id: 1,

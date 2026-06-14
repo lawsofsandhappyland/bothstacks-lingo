@@ -18,12 +18,19 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+/** Firebase authentication instance. */
 const auth = getAuth(app);
+/** Firestore database instance. */
 const db = getFirestore(app);
 
 let authReadyPromise: Promise<User | null> | null = null;
 let currentUser: User | null = null;
 
+/**
+ * Resolves the current anonymous Firebase user, signing in anonymously on first call.
+ * Resolves null on authentication failure.
+ * @returns A promise that resolves to the authenticated user or null.
+ */
 function getAuthReady(): Promise<User | null> {
   if (authReadyPromise) return authReadyPromise;
 
