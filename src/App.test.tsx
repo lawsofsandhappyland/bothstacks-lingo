@@ -11,6 +11,7 @@ vi.mock('./components/LessonRunner', () => ({ default: () => <div data-testid="l
 vi.mock('./components/TutorChat', () => ({ default: () => <div data-testid="tutor-chat" /> }));
 vi.mock('./components/SettingsView', () => ({ default: () => <div data-testid="settings-view" /> }));
 vi.mock('./components/AchievementsView', () => ({ default: () => <div data-testid="achievements-view" /> }));
+vi.mock('./components/ProgressView', () => ({ default: () => <div data-testid="progress-view" /> }));
 
 vi.mock('./lib/audio', () => ({
   soundEffects: {
@@ -85,6 +86,24 @@ describe('App', () => {
     const ajustesButton = screen.getByText('Ajustes').closest('button');
     await user.click(ajustesButton!);
     expect(await screen.findByTestId('settings-view')).toBeTruthy();
+  });
+
+  it('navigates to progress view via the Progreso nav button', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getAuthReady).mockResolvedValue({ uid: 'u1' } as never);
+    vi.mocked(loadUserDoc).mockResolvedValue({
+      stats: { xp: 0, streak: 0, lives: 5, lastActiveDate: null },
+      completedLessons: [],
+      tutorModel: 'gemini-2.5-flash',
+    } as never);
+
+    render(<App />);
+    await screen.findByTestId('path-view');
+
+    const progresoButton = screen.getByText('Progreso').closest('button');
+    await user.click(progresoButton!);
+    expect(await screen.findByTestId('progress-view')).toBeTruthy();
   });
 
   it('shows onboarding overlay on first run', async () => {

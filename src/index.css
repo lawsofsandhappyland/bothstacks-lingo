@@ -356,6 +356,12 @@ html, body {
   display: flex;
   gap: 0.5rem;
   padding: 6px;
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.floating-navbar::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-pill {
@@ -382,4 +388,14 @@ html, body {
   background-color: var(--color-fuchsia-accent);
   color: var(--color-ghost-white);
   box-shadow: 0 0 10px rgba(232, 57, 246, 0.4);
+}
+
+/* Keep all nav pills on-screen on narrow phones (5+ items). */
+@media (max-width: 400px) {
+  .floating-navbar {
+    gap: 0.25rem;
+  }
+  .nav-pill {
+    padding: 9px 13px;
+  }
 }

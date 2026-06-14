@@ -14,6 +14,7 @@ const LessonRunner = lazy(() => import('./components/LessonRunner'));
 const TutorChat = lazy(() => import('./components/TutorChat'));
 const SettingsView = lazy(() => import('./components/SettingsView'));
 const AchievementsView = lazy(() => import('./components/AchievementsView'));
+const ProgressView = lazy(() => import('./components/ProgressView'));
 
 const STORAGE_KEYS = {
   STATS: 'bothlingo_stats',
@@ -253,6 +254,8 @@ export default function App() {
             <TutorChat />
           ) : view === 'achievements' ? (
             <AchievementsView stats={stats} completedLessons={completedLessons} />
+          ) : view === 'progress' ? (
+            <ProgressView stats={stats} completedLessons={completedLessons} />
           ) : (
             <SettingsView
               stats={stats}
@@ -283,6 +286,12 @@ export default function App() {
             className={`nav-pill ${view === 'achievements' ? 'active' : ''}`}
           >
             🏆 <span className="hidden sm:inline">Logros</span>
+          </button>
+          <button
+            onClick={() => handleNavClick('progress')}
+            className={`nav-pill ${view === 'progress' ? 'active' : ''}`}
+          >
+            📊 <span className="hidden sm:inline">Progreso</span>
           </button>
           <button
             onClick={() => handleNavClick('settings')}
