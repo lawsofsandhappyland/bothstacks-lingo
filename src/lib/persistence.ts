@@ -1,6 +1,7 @@
 import { db } from './firebase';
 import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
 import type { UserStats } from '../types';
+import type { ReviewLog } from './review';
 
 /**
  * User document shape persisted to Firestore.
@@ -9,6 +10,7 @@ interface UserDoc {
   stats: UserStats;
   completedLessons: number[];
   tutorModel: string;
+  reviewLog?: ReviewLog;
   updatedAt: number;
 }
 

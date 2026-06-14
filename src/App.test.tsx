@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { getAuthReady } from './lib/firebase';
@@ -13,6 +13,7 @@ vi.mock('./components/TutorChat', () => ({ default: () => <div data-testid="tuto
 vi.mock('./components/SettingsView', () => ({ default: () => <div data-testid="settings-view" /> }));
 vi.mock('./components/AchievementsView', () => ({ default: () => <div data-testid="achievements-view" /> }));
 vi.mock('./components/ProgressView', () => ({ default: () => <div data-testid="progress-view" /> }));
+vi.mock('./components/ReviewView', () => ({ default: () => <div data-testid="review-view" /> }));
 
 vi.mock('./lib/audio', () => ({
   soundEffects: {
@@ -150,6 +151,24 @@ describe('App', () => {
 
     render(<App />);
     await screen.findByTestId('path-view');
-    expect(screen.getByText('5')).toBeTruthy();
+    expect(within(screen.getByTitle('Hearts Remaining')).getByText('5')).toBeTruthy();
+  });
+
+  it('navigates to repaso view via the Repaso nav button', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getAuthReady).mockResolvedValue({ uid: 'u1' } as never);
+    vi.mocked(loadUserDoc).mockResolvedValue({
+      stats: { xp: 0, streak: 0, lives: 5, lastActiveDate: null },
+      completedLessons: [],
+      tutorModel: 'gemini-2.5-flash',
+    } as never);
+
+    render(<App />);
+    await screen.findByTestId('path-view');
+
+    const repasoButton = screen.getByText('Repaso').closest('button');
+    await user.click(repasoButton!);
+    expect(await screen.findByTestId('review-view')).toBeTruthy();
   });
 });

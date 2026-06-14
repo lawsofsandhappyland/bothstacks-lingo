@@ -1,10 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ViewType, UserStats } from './types';
-import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats, regenerateLives } from './lib/progress';
+import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats, regenerateLives, dailyGoalProgress, DAILY_XP_GOAL } from './lib/progress';
 import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
 import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
+import { buildReviewQueue, dueItems, perLessonDue, collectVocab, markReviewed } from './lib/review';
+import type { ReviewLog } from './lib/review';
+import { evaluateAchievements } from './lib/achievements';
 
 import Onboarding from './components/Onboarding';
 import OfflineBanner from './components/OfflineBanner';
@@ -16,11 +19,13 @@ const TutorChat = lazy(() => import('./components/TutorChat'));
 const SettingsView = lazy(() => import('./components/SettingsView'));
 const AchievementsView = lazy(() => import('./components/AchievementsView'));
 const ProgressView = lazy(() => import('./components/ProgressView'));
+const ReviewView = lazy(() => import('./components/ReviewView'));
 
 const STORAGE_KEYS = {
   STATS: 'bothlingo_stats',
   COMPLETED: 'bothlingo_completed_lessons',
-  MODEL: 'bothlingo_tutor_model'
+  MODEL: 'bothlingo_tutor_model',
+  REVIEW_LOG: 'bothlingo_review_log',
 };
 
 const LEGACY_API_KEY_STORAGE_KEY = 'bothlingo_gemini_key';
@@ -44,6 +49,15 @@ function readStoredText(key: string, fallback: string): string {
   }
 }
 
+const VIEW_META: Record<Exclude<ViewType, 'lesson'>, { crumb: string; title: string }> = {
+  path: { crumb: 'Tu camino', title: 'Camino de Lingo' },
+  repaso: { crumb: 'Repaso espaciado', title: 'Repaso' },
+  tutor: { crumb: 'Práctica en vivo', title: 'Tutor de voz' },
+  achievements: { crumb: 'Colección', title: 'Logros' },
+  progress: { crumb: 'Tu progreso', title: 'Progreso' },
+  settings: { crumb: 'Cuenta', title: 'Ajustes' },
+};
+
 /**
  * Root application shell that bootstraps anonymous Firebase auth and loads user data from Firestore
  * with a localStorage fallback and one-time migration. Owns the global stats, streak, and
@@ -59,6 +73,7 @@ export default function App() {
   const [tutorModel, setTutorModel] = useState<string>(DEFAULT_TUTOR_MODEL);
   const [uid, setUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reviewLog, setReviewLog] = useState<ReviewLog>({});
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
       return !localStorage.getItem('bothlingo_onboarded');
@@ -79,6 +94,7 @@ export default function App() {
         try { localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(regenedStored)); } catch { /* ignore */ }
         setCompletedLessons(readStoredJson(STORAGE_KEYS.COMPLETED, []));
         setTutorModel(readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL));
+        setReviewLog(readStoredJson<ReviewLog>(STORAGE_KEYS.REVIEW_LOG, {}));
         setLoading(false);
         return;
       }
@@ -91,6 +107,7 @@ export default function App() {
         setStats(regened);
         setCompletedLessons(remote.completedLessons);
         setTutorModel(remote.tutorModel || DEFAULT_TUTOR_MODEL);
+        setReviewLog(remote.reviewLog ?? {});
         // Persist a regen change BEFORE unblocking interaction so this bootstrap
         // write cannot race with (and clobber) a quick first user action.
         if (regened !== remote.stats) {
@@ -98,6 +115,7 @@ export default function App() {
             stats: regened,
             completedLessons: remote.completedLessons,
             tutorModel: remote.tutorModel || DEFAULT_TUTOR_MODEL,
+            reviewLog: remote.reviewLog ?? {},
           }).catch(() => {});
         }
         setLoading(false);
@@ -108,11 +126,13 @@ export default function App() {
       const localStats = readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS);
       const localCompleted = readStoredJson(STORAGE_KEYS.COMPLETED, []);
       const localModel = readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL);
+      const localReviewLog = readStoredJson<ReviewLog>(STORAGE_KEYS.REVIEW_LOG, {});
 
       const regenedLocal = regenerateLives(localStats, new Date());
       setStats(regenedLocal);
       setCompletedLessons(localCompleted);
       setTutorModel(localModel);
+      setReviewLog(localReviewLog);
       setLoading(false);
 
       // Seed Firestore with the regenerated local data (persists the regen anchor)
@@ -120,12 +140,14 @@ export default function App() {
         stats: regenedLocal,
         completedLessons: localCompleted,
         tutorModel: localModel,
+        reviewLog: localReviewLog,
       }).catch(() => {});
 
       // Clear localStorage after migration
       localStorage.removeItem(STORAGE_KEYS.STATS);
       localStorage.removeItem(STORAGE_KEYS.COMPLETED);
       localStorage.removeItem(STORAGE_KEYS.MODEL);
+      localStorage.removeItem(STORAGE_KEYS.REVIEW_LOG);
     });
   }, []);
 
@@ -143,24 +165,26 @@ export default function App() {
   }, [view]);
 
   // Persist state to Firestore on change
-  const syncToFirestore = (newStats: UserStats, newCompleted: number[], newModel: string) => {
+  const syncToFirestore = (newStats: UserStats, newCompleted: number[], newModel: string, newReviewLog: ReviewLog) => {
     if (!uid) {
       localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
       localStorage.setItem(STORAGE_KEYS.COMPLETED, JSON.stringify(newCompleted));
       localStorage.setItem(STORAGE_KEYS.MODEL, newModel);
+      localStorage.setItem(STORAGE_KEYS.REVIEW_LOG, JSON.stringify(newReviewLog));
       return;
     }
     saveUserDoc(uid, {
       stats: newStats,
       completedLessons: newCompleted,
       tutorModel: newModel,
+      reviewLog: newReviewLog,
     }).catch((err) => console.error('Firestore save failed', err));
   };
 
   const handleLoseLife = () => {
     const updatedStats = loseLife(stats);
     setStats(updatedStats);
-    syncToFirestore(updatedStats, completedLessons, tutorModel);
+    syncToFirestore(updatedStats, completedLessons, tutorModel, reviewLog);
   };
 
   const handleLessonComplete = (xpReward: number) => {
@@ -169,7 +193,13 @@ export default function App() {
     const result = computeLessonCompletion(stats, completedLessons, activeLessonId, xpReward);
     setStats(result.stats);
     setCompletedLessons(result.completedLessons);
-    syncToFirestore(result.stats, result.completedLessons, tutorModel);
+
+    // Mark that lesson's words as reviewed (closes the loop — just practiced = memory fresh)
+    const keys = collectVocab([activeLessonId], lessonsData).map(v => v.key);
+    const newLog = markReviewed(reviewLog, keys);
+    setReviewLog(newLog);
+
+    syncToFirestore(result.stats, result.completedLessons, tutorModel, newLog);
 
     setActiveLessonId(null);
     setView('path');
@@ -179,19 +209,22 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.STATS);
     localStorage.removeItem(STORAGE_KEYS.COMPLETED);
     localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEYS.REVIEW_LOG);
 
     const resetStatsValue = resetStats();
+    const emptyLog: ReviewLog = {};
     setStats(resetStatsValue);
     setCompletedLessons([]);
     setActiveLessonId(null);
+    setReviewLog(emptyLog);
     setView('path');
 
-    syncToFirestore(resetStatsValue, [], tutorModel);
+    syncToFirestore(resetStatsValue, [], tutorModel, emptyLog);
   };
 
   const handleSetTutorModel = (m: string) => {
     setTutorModel(m);
-    syncToFirestore(stats, completedLessons, m);
+    syncToFirestore(stats, completedLessons, m, reviewLog);
   };
 
   const completeOnboarding = () => {
@@ -208,6 +241,98 @@ export default function App() {
     setView(targetView);
   };
 
+  // Spaced-repetition computations
+  const queue = buildReviewQueue(completedLessons, lessonsData, reviewLog);
+  const due = dueItems(queue);
+  const totalDue = due.length;
+  const perLesson = perLessonDue(completedLessons, lessonsData, reviewLog);
+
+  // onStartReview: pick the lesson with the most due words, fall back to weakest item's lesson.
+  // Guard the zero-lives case the same way PathView gates lesson starts — a review IS a lesson run.
+  const noLives = stats.lives <= 0;
+  const onStartReview = () => {
+    if (noLives) return;
+    soundEffects.playTap();
+    let targetLessonId: number | null = null;
+
+    if (perLesson.length > 0) {
+      const withDue = perLesson.filter(l => l.dueCount > 0);
+      if (withDue.length > 0) {
+        // Sort by dueCount desc; tie-break by weakest due item's lesson
+        const sorted = [...withDue].sort((a, b) => {
+          if (b.dueCount !== a.dueCount) return b.dueCount - a.dueCount;
+          const aWeakest = due.find(item => item.lessonId === a.lessonId);
+          const bWeakest = due.find(item => item.lessonId === b.lessonId);
+          const aStr = aWeakest?.memoryStrength ?? 100;
+          const bStr = bWeakest?.memoryStrength ?? 100;
+          return aStr - bStr;
+        });
+        targetLessonId = sorted[0].lessonId;
+      } else if (due.length > 0) {
+        targetLessonId = due[0].lessonId;
+      }
+    } else if (due.length > 0) {
+      targetLessonId = due[0].lessonId;
+    }
+
+    if (targetLessonId !== null) {
+      setActiveLessonId(targetLessonId);
+      setView('lesson');
+    }
+  };
+
+  // Level computed from XP
+  const level = Math.floor(stats.xp / 100) + 1;
+
+  // Nearest locked achievement for the right rail
+  const achievementStatuses = evaluateAchievements(stats, completedLessons);
+  const lockedAchievements = achievementStatuses.filter(a => !a.unlocked);
+  const nextAchievement = lockedAchievements.length > 0
+    ? lockedAchievements.reduce((best, a) => {
+        const bestRatio = stats.xp >= 0
+          ? (() => {
+              switch (best.kind) {
+                case 'xp': return stats.xp / best.threshold;
+                case 'streak': return stats.streak / best.threshold;
+                case 'lessons': return completedLessons.length / best.threshold;
+                default: return 0;
+              }
+            })()
+          : 0;
+        const aRatio = (() => {
+          switch (a.kind) {
+            case 'xp': return stats.xp / a.threshold;
+            case 'streak': return stats.streak / a.threshold;
+            case 'lessons': return completedLessons.length / a.threshold;
+            default: return 0;
+          }
+        })();
+        return aRatio > bestRatio ? a : best;
+      })
+    : null;
+
+  const getAchievementCurrent = (kind: string): number => {
+    switch (kind) {
+      case 'xp': return stats.xp;
+      case 'streak': return stats.streak;
+      case 'lessons': return completedLessons.length;
+      default: return 0;
+    }
+  };
+
+  // Daily goal
+  const goalProgress = dailyGoalProgress(stats);
+
+  // Nav items definition
+  const navItems: { label: string; emoji: string; targetView: ViewType }[] = [
+    { label: 'Camino', emoji: '🗺️', targetView: 'path' },
+    { label: 'Repaso', emoji: '🧠', targetView: 'repaso' },
+    { label: 'Tutor', emoji: '🐧', targetView: 'tutor' },
+    { label: 'Logros', emoji: '🏆', targetView: 'achievements' },
+    { label: 'Progreso', emoji: '📊', targetView: 'progress' },
+    { label: 'Ajustes', emoji: '⚙️', targetView: 'settings' },
+  ];
+
   // Loading screen while auth initializes
   if (loading) {
     return (
@@ -223,119 +348,523 @@ export default function App() {
     );
   }
 
+  // Lesson view: full-screen, no shell chrome
+  if (view === 'lesson') {
+    return (
+      <div className="min-h-screen bg-void text-ghost-white font-sans">
+        <a href="#main-content" className="sr-only-focusable">Skip to content</a>
+        <OfflineBanner />
+        {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
+        <main ref={mainRef} id="main-content" tabIndex={-1} className="flex-grow flex items-center justify-center">
+          <Suspense fallback={<div className="flex-grow flex items-center justify-center"><p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p></div>}>
+            {activeLesson ? (
+              <LessonRunner
+                lesson={activeLesson}
+                stats={stats}
+                onLessonComplete={handleLessonComplete}
+                onLoseLife={handleLoseLife}
+                onQuit={() => { soundEffects.playTap(); setActiveLessonId(null); setView('path'); }}
+              />
+            ) : null}
+          </Suspense>
+        </main>
+      </div>
+    );
+  }
+
+  const viewMeta = VIEW_META[view as Exclude<ViewType, 'lesson'>] ?? VIEW_META['path'];
+
   return (
-    <div className="min-h-screen bg-void text-ghost-white flex flex-col font-sans pb-28">
+    <div className="min-h-screen text-ghost-white font-sans bl-bg" style={{ paddingBottom: 96 }}>
       <a href="#main-content" className="sr-only-focusable">Skip to content</a>
       <OfflineBanner />
-      {!loading && showOnboarding && <Onboarding onComplete={completeOnboarding} />}
-      {view !== 'lesson' && (
-        <header className="sticky top-0 bg-void/90 backdrop-blur-md border-b-3 border-void py-3.5 px-4 z-40 transition-all">
-          <div className="max-w-2xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2">
+      {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
+
+      {/* Top header — sticky, blurred */}
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 30,
+          background: 'rgba(13,10,20,0.82)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderBottom: '1px solid var(--color-raised-edge)',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1400,
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            padding: '12px 24px',
+          }}
+        >
+          {/* Left: brand (mobile only) + view crumb + title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            {/* Brand block — mobile only */}
+            <div
+              className="bl-header-brand"
+              style={{ display: 'none', alignItems: 'center', gap: 6, marginRight: 8 }}
+            >
               <picture>
                 <source srcSet="/logomark.png" type="image/png" />
-                <img src="/logomark.png" alt="Both Stacks Logomark" width={28} height={28} className="animate-float" />
+                <img src="/logomark.png" alt="BothLingo" width={24} height={24} />
               </picture>
-              <h1 className="ui-label text-sm tracking-widest text-ghost-white font-black">
-                Both<span className="text-flame-orange">Lingo</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 900, fontSize: 14, color: 'var(--color-ghost-white)' }}>
+                Both<span style={{ color: 'var(--color-flame-orange)' }}>Lingo</span>
+              </span>
+            </div>
+            <div>
+              <p
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: 'var(--color-muted)',
+                  marginBottom: 2,
+                }}
+              >
+                {viewMeta.crumb}
+              </p>
+              <h1
+                style={{
+                  fontSize: 24,
+                  fontWeight: 900,
+                  color: 'var(--color-ghost-white)',
+                  lineHeight: 1.1,
+                }}
+              >
+                {viewMeta.title}
               </h1>
             </div>
+          </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1" title="Daily Streak">
-                <span className="text-base select-none">🔥</span>
-                <span className="font-mono text-sm font-black text-fuchsia-accent">{stats.streak}</span>
-              </div>
-              <div className="flex items-center gap-1" title="Streak Freezes">
-                <span className="text-base select-none">❄️</span>
-                <span className="font-mono text-sm font-black text-electric-blue">{stats.streakFreezes ?? 0}</span>
-              </div>
-              <div className="flex items-center gap-1" title="XP Gained">
-                <span className="text-base select-none">🎯</span>
-                <span className="font-mono text-sm font-black text-flame-orange">{stats.xp} XP</span>
-              </div>
-              <div className="flex items-center gap-1" title="Hearts Remaining">
-                <span className="text-base select-none">❤️</span>
-                <span className="font-mono text-sm font-black text-electric-blue">{stats.lives}</span>
-              </div>
+          {/* Right: stat chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div
+              title="Daily Streak"
+              style={{
+                padding: '7px 13px',
+                borderRadius: 9999,
+                background: '#160C26',
+                border: '1px solid #2A1840',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>🔥</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 13, color: 'var(--color-fuchsia-accent)' }}>
+                {stats.streak}
+              </span>
+            </div>
+            <div
+              title="Streak Freezes"
+              style={{
+                padding: '7px 13px',
+                borderRadius: 9999,
+                background: '#160C26',
+                border: '1px solid #2A1840',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>❄️</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 13, color: 'var(--color-electric-blue)' }}>
+                {stats.streakFreezes ?? 0}
+              </span>
+            </div>
+            <div
+              title="XP Gained"
+              style={{
+                padding: '7px 13px',
+                borderRadius: 9999,
+                background: '#160C26',
+                border: '1px solid #2A1840',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>🎯</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 13, color: 'var(--color-flame-orange)' }}>
+                {stats.xp} XP
+              </span>
+            </div>
+            <div
+              title="Hearts Remaining"
+              style={{
+                padding: '7px 13px',
+                borderRadius: 9999,
+                background: '#160C26',
+                border: '1px solid #2A1840',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>❤️</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 13, color: 'var(--color-ghost-white)' }}>
+                {stats.lives}
+              </span>
             </div>
           </div>
-        </header>
-      )}
+        </div>
+      </header>
 
-      <main ref={mainRef} id="main-content" tabIndex={-1} className="flex-grow flex items-center justify-center">
-        <Suspense fallback={<div className="flex-grow flex items-center justify-center"><p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p></div>}>
-          {view === 'lesson' && activeLesson ? (
-            <LessonRunner
-              lesson={activeLesson}
-              stats={stats}
-              onLessonComplete={handleLessonComplete}
-              onLoseLife={handleLoseLife}
-              onQuit={() => { soundEffects.playTap(); setActiveLessonId(null); setView('path'); }}
-            />
-          ) : view === 'path' ? (
-            <PathView
-              lessons={lessonsData}
-              stats={stats}
-              completedLessons={completedLessons}
-              onStartLesson={(id) => { setActiveLessonId(id); setView('lesson'); }}
-            />
-          ) : view === 'tutor' ? (
-            <TutorChat />
-          ) : view === 'achievements' ? (
-            <AchievementsView stats={stats} completedLessons={completedLessons} />
-          ) : view === 'progress' ? (
-            <ProgressView stats={stats} completedLessons={completedLessons} />
-          ) : (
-            <SettingsView
-              stats={stats}
-              tutorModel={tutorModel}
-              setTutorModel={handleSetTutorModel}
-              resetStats={handleResetStats}
-            />
+      {/* Three-zone shell */}
+      <div className="bl-shell">
+        {/* Sidebar / bottom nav */}
+        <aside className="bl-sidebar">
+          {/* Brand block — desktop only */}
+          <div className="bl-brand-block">
+            <picture>
+              <source srcSet="/logomark.png" type="image/png" />
+              <img src="/logomark.png" alt="BothLingo logomark" width={34} height={34} />
+            </picture>
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 900, fontSize: 21, color: 'var(--color-ghost-white)', lineHeight: 1 }}>
+              Both<span style={{ color: 'var(--color-flame-orange)' }}>Lingo</span>
+            </span>
+          </div>
+
+          {/* Navigation */}
+          <nav className="bl-nav" aria-label="Main navigation">
+            {navItems.map(({ label, emoji, targetView }) => (
+              <button
+                key={targetView}
+                onClick={() => handleNavClick(targetView)}
+                className={`bl-navbtn${view === targetView ? ' active' : ''}`}
+                aria-current={view === targetView ? 'page' : undefined}
+              >
+                <span className="bl-navbtn-emoji">{emoji}</span>
+                <span>{label}</span>
+                {targetView === 'repaso' && totalDue > 0 && (
+                  <span className="bl-navbtn-badge">{totalDue}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* Profile card — desktop only */}
+          <div className="bl-profile-card">
+            <div
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: '50%',
+                background: 'var(--color-void)',
+                border: '2px solid var(--color-raised-edge-3)',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              <picture>
+                <source srcSet="/mascot-wave.webp" type="image/webp" />
+                <img src="/mascot-wave.png" alt="El Pingüino" width={46} height={46} style={{ objectFit: 'cover' }} />
+              </picture>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-ghost-white)', lineHeight: 1.2 }}>El Pingüino</p>
+              <p
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: 'var(--color-muted)',
+                  marginTop: 2,
+                }}
+              >
+                Nivel {level} · Aprendiz
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        {/* Content zone */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', padding: 28, gap: 28, alignItems: 'flex-start' }}>
+          {/* Main content */}
+          <main
+            ref={mainRef}
+            id="main-content"
+            tabIndex={-1}
+            style={{ flex: '1 1 440px', minWidth: 0 }}
+          >
+            <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}><p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p></div>}>
+              {view === 'path' ? (
+                <PathView
+                  lessons={lessonsData}
+                  stats={stats}
+                  completedLessons={completedLessons}
+                  onStartLesson={(id) => { setActiveLessonId(id); setView('lesson'); }}
+                />
+              ) : view === 'repaso' ? (
+                <ReviewView
+                  dueItems={due}
+                  perLesson={perLesson}
+                  totalDue={totalDue}
+                  noLives={noLives}
+                  onStartReview={onStartReview}
+                />
+              ) : view === 'tutor' ? (
+                <TutorChat />
+              ) : view === 'achievements' ? (
+                <AchievementsView stats={stats} completedLessons={completedLessons} />
+              ) : view === 'progress' ? (
+                <ProgressView stats={stats} completedLessons={completedLessons} />
+              ) : (
+                <SettingsView
+                  stats={stats}
+                  tutorModel={tutorModel}
+                  setTutorModel={handleSetTutorModel}
+                  resetStats={handleResetStats}
+                />
+              )}
+            </Suspense>
+          </main>
+
+          {/* Right rail — path view only */}
+          {view === 'path' && (
+            <div
+              style={{
+                flex: '1 1 300px',
+                maxWidth: 340,
+                position: 'sticky',
+                top: 104,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+              }}
+            >
+              {/* Repaso de hoy */}
+              <div
+                className="arcade-card"
+                style={{
+                  background: 'linear-gradient(150deg,#2a1c12,#1c1030)',
+                  border: '1px solid #3a2a18',
+                  padding: 20,
+                }}
+              >
+                <p
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: 'var(--color-muted)',
+                    marginBottom: 8,
+                  }}
+                >
+                  🧠 Repaso de hoy
+                </p>
+                {totalDue === 0 ? (
+                  <>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-ghost-white)', marginBottom: 12 }}>
+                      ¡Todo al día! 🎉
+                    </p>
+                    <button
+                      onClick={() => handleNavClick('repaso')}
+                      className="pill-button pill-button-orange"
+                      style={{ fontSize: 12, padding: '8px 16px', width: '100%' }}
+                    >
+                      Practicar de nuevo
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ marginBottom: 4 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 28, fontWeight: 800, color: 'var(--color-flame-orange)' }}>
+                        {totalDue}
+                      </span>
+                      {' '}
+                      <span style={{ fontSize: 13, color: 'var(--color-body-lifted)' }}>palabras enfriándose</span>
+                    </p>
+                    {/* Up to 3 weakest due words with micro memory bars */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                      {due.slice(0, 3).map(item => (
+                        <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-ghost-white)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {item.word}
+                          </span>
+                          <div style={{ width: 60, height: 4, background: 'var(--color-raised-edge)', borderRadius: 9999, flexShrink: 0 }}>
+                            <div
+                              style={{
+                                width: `${item.memoryStrength}%`,
+                                height: '100%',
+                                background: 'var(--color-flame-orange)',
+                                borderRadius: 9999,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {noLives ? (
+                      <>
+                        <button
+                          disabled
+                          className="pill-button"
+                          style={{ fontSize: 12, padding: '8px 16px', width: '100%', opacity: 0.5, cursor: 'not-allowed' }}
+                        >
+                          Sin vidas
+                        </button>
+                        <p style={{ fontSize: 11, color: 'var(--color-muted-2)', marginTop: 8 }}>
+                          Recupera vidas para repasar.
+                        </p>
+                      </>
+                    ) : (
+                      <button
+                        onClick={onStartReview}
+                        className="pill-button pill-button-orange"
+                        style={{ fontSize: 12, padding: '8px 16px', width: '100%' }}
+                      >
+                        Repasar · ~5 min
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Meta diaria */}
+              <div className="arcade-card" style={{ padding: 20 }}>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: 'var(--color-muted)',
+                    marginBottom: 8,
+                  }}
+                >
+                  Meta diaria
+                </p>
+                <p style={{ marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 800, color: 'var(--color-flame-orange)' }}>
+                    {goalProgress.earned}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--color-muted)', marginLeft: 4 }}>
+                    / {DAILY_XP_GOAL} XP
+                  </span>
+                </p>
+                <div style={{ height: 12, background: 'var(--color-raised-edge)', borderRadius: 9999, overflow: 'hidden', marginBottom: 8 }}>
+                  <div
+                    style={{
+                      width: `${Math.min(100, (goalProgress.earned / DAILY_XP_GOAL) * 100)}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, var(--color-flame-orange), var(--color-fuchsia-accent))',
+                      borderRadius: 9999,
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+                {goalProgress.met ? (
+                  <p style={{ fontSize: 12, color: 'var(--color-success-green)' }}>✅ ¡Meta del día cumplida!</p>
+                ) : (
+                  <p style={{ fontSize: 12, color: 'var(--color-body-lifted)' }}>
+                    Te faltan {DAILY_XP_GOAL - goalProgress.earned} XP
+                  </p>
+                )}
+              </div>
+
+              {/* Racha */}
+              <div className="arcade-card" style={{ padding: 20 }}>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: 'var(--color-muted)',
+                    marginBottom: 6,
+                  }}
+                >
+                  Racha
+                </p>
+                <p>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 36, fontWeight: 900, color: 'var(--color-fuchsia-accent)' }}>
+                    {stats.streak}
+                  </span>
+                  {' '}
+                  <span style={{ fontSize: 13, color: 'var(--color-body-lifted)' }}>días seguidos</span>
+                </p>
+                {(stats.streakFreezes ?? 0) > 0 && (
+                  <p style={{ fontSize: 12, color: 'var(--color-electric-blue)', marginTop: 6 }}>
+                    ❄️ {stats.streakFreezes} congelación(es)
+                  </p>
+                )}
+              </div>
+
+              {/* Próximo logro */}
+              <div className="arcade-card" style={{ padding: 20 }}>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: 'var(--color-muted)',
+                    marginBottom: 10,
+                  }}
+                >
+                  Próximo logro
+                </p>
+                {nextAchievement === null ? (
+                  <p style={{ fontSize: 13, color: 'var(--color-success-green)', fontWeight: 700 }}>
+                    🏆 ¡Todos los logros desbloqueados!
+                  </p>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <span style={{ fontSize: 24 }}>{nextAchievement.icon}</span>
+                      <div>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-ghost-white)' }}>{nextAchievement.title}</p>
+                        <p style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 1 }}>{nextAchievement.description}</p>
+                      </div>
+                    </div>
+                    {(() => {
+                      const current = getAchievementCurrent(nextAchievement.kind);
+                      const remaining = nextAchievement.threshold - current;
+                      return (
+                        <>
+                          <p style={{ fontSize: 12, color: 'var(--color-body-lifted)', marginBottom: 6 }}>
+                            {remaining} más para desbloquear
+                          </p>
+                          <div style={{ height: 6, background: 'var(--color-raised-edge)', borderRadius: 9999, overflow: 'hidden', marginBottom: 4 }}>
+                            <div
+                              style={{
+                                width: `${Math.min(100, (current / nextAchievement.threshold) * 100)}%`,
+                                height: '100%',
+                                background: 'var(--color-amethyst)',
+                                borderRadius: 9999,
+                              }}
+                            />
+                          </div>
+                          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-muted)' }}>
+                            {current} / {nextAchievement.threshold}
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            </div>
           )}
-        </Suspense>
-      </main>
-
-      {view !== 'lesson' && (
-        <nav className="floating-navbar select-none">
-          <button
-            onClick={() => handleNavClick('path')}
-            className={`nav-pill ${view === 'path' ? 'active' : ''}`}
-            aria-label="Path"
-          >
-            🗺️ <span className="hidden sm:inline">Path</span>
-          </button>
-          <button
-            onClick={() => handleNavClick('tutor')}
-            className={`nav-pill ${view === 'tutor' ? 'active' : ''}`}
-            aria-label="Tutor"
-          >
-            🐧 <span className="hidden sm:inline">Tutor</span>
-          </button>
-          <button
-            onClick={() => handleNavClick('achievements')}
-            className={`nav-pill ${view === 'achievements' ? 'active' : ''}`}
-            aria-label="Achievements"
-          >
-            🏆 <span className="hidden sm:inline">Logros</span>
-          </button>
-          <button
-            onClick={() => handleNavClick('progress')}
-            className={`nav-pill ${view === 'progress' ? 'active' : ''}`}
-            aria-label="Progress"
-          >
-            📊 <span className="hidden sm:inline">Progreso</span>
-          </button>
-          <button
-            onClick={() => handleNavClick('settings')}
-            className={`nav-pill ${view === 'settings' ? 'active' : ''}`}
-            aria-label="Settings"
-          >
-            ⚙️ <span className="hidden sm:inline">Ajustes</span>
-          </button>
-        </nav>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
