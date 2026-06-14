@@ -64,7 +64,9 @@ describe('PathView — progress count', () => {
         onStartLesson={vi.fn()}
       />
     );
-    expect(screen.getByText('1 / 3 Lessons')).toBeDefined();
+    // The readout splits the count and "/ total" across sibling spans for the
+    // muted colour, so assert on the wrapper's combined textContent.
+    expect(screen.getByTestId('path-progress').textContent?.replace(/\s+/g, ' ').trim()).toBe('1 / 3');
   });
 });
 
@@ -98,8 +100,8 @@ describe('PathView — lesson nodes', () => {
   });
 });
 
-describe('PathView — popover interaction with lives', () => {
-  it('clicking first lesson node opens the popover showing description and START LESSON button', async () => {
+describe('PathView — modal interaction with lives', () => {
+  it('clicking first lesson node opens the modal showing description and start button', async () => {
     render(
       <PathView
         lessons={lessons}
@@ -110,10 +112,10 @@ describe('PathView — popover interaction with lives', () => {
     );
     await userEvent.click(screen.getByTitle('Saludos'));
     expect(screen.getByText('Learn how to greet people in Spanish.')).toBeDefined();
-    expect(screen.getByText('START LESSON')).toBeDefined();
+    expect(screen.getByText(/Empezar lección/)).toBeDefined();
   });
 
-  it('clicking START LESSON calls onStart with lesson id 1', async () => {
+  it('clicking start button calls onStart with lesson id 1', async () => {
     const onStart = vi.fn();
     render(
       <PathView
@@ -124,11 +126,11 @@ describe('PathView — popover interaction with lives', () => {
       />
     );
     await userEvent.click(screen.getByTitle('Saludos'));
-    await userEvent.click(screen.getByText('START LESSON'));
+    await userEvent.click(screen.getByText(/Empezar lección/));
     expect(onStart).toHaveBeenCalledWith(1);
   });
 
-  it('with lives 0 the start button shows REQUIRES LIVES and is disabled', async () => {
+  it('with lives 0 the start button shows Sin vidas and is disabled', async () => {
     render(
       <PathView
         lessons={lessons}
@@ -138,12 +140,12 @@ describe('PathView — popover interaction with lives', () => {
       />
     );
     await userEvent.click(screen.getByTitle('Saludos'));
-    const btn = screen.getByText('REQUIRES LIVES') as HTMLButtonElement;
+    const btn = screen.getByText(/Sin vidas/) as HTMLButtonElement;
     expect(btn).toBeDefined();
     expect(btn.disabled).toBe(true);
   });
 
-  it('with lives 0 clicking REQUIRES LIVES does NOT call onStart', async () => {
+  it('with lives 0 clicking Sin vidas does NOT call onStart', async () => {
     const onStart = vi.fn();
     render(
       <PathView
@@ -154,13 +156,13 @@ describe('PathView — popover interaction with lives', () => {
       />
     );
     await userEvent.click(screen.getByTitle('Saludos'));
-    await userEvent.click(screen.getByText('REQUIRES LIVES'));
+    await userEvent.click(screen.getByText(/Sin vidas/));
     expect(onStart).not.toHaveBeenCalled();
   });
 });
 
 describe('PathView — locked lesson', () => {
-  it('clicking a locked lesson node does NOT open a popover', async () => {
+  it('clicking a locked lesson node does NOT open a modal', async () => {
     render(
       <PathView
         lessons={lessons}
@@ -172,21 +174,5 @@ describe('PathView — locked lesson', () => {
     // Familia (id 3) is locked because Comida (id 2) is not completed
     await userEvent.click(screen.getByTitle('Familia'));
     expect(screen.queryByText('Learn Spanish words for family members.')).toBeNull();
-  });
-});
-
-describe('PathView — daily goal', () => {
-  it('shows daily goal progress and progressbar when dailyXp is set for today', () => {
-    const todayStr = new Date().toDateString();
-    render(
-      <PathView
-        lessons={lessons}
-        stats={{ ...defaultStats, dailyXp: 20, dailyXpDate: todayStr }}
-        completedLessons={[]}
-        onStartLesson={vi.fn()}
-      />
-    );
-    expect(screen.getByText('20/30 XP')).toBeDefined();
-    expect(screen.getByRole('progressbar')).toBeDefined();
   });
 });

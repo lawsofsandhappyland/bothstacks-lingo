@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Lesson, UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
-import DailyGoal from './DailyGoal';
 
 /**
  * Props for the PathView component.
@@ -19,7 +18,7 @@ interface PathViewProps {
 
 /**
  * Duolingo-style staggered lesson path where nodes unlock sequentially as previous lessons complete.
- * Clicking an unlocked node opens a start popover; locked nodes play an error sound.
+ * Clicking an unlocked node opens a centered modal; locked nodes play an error sound.
  */
 export default function PathView({ lessons, stats, completedLessons, onStartLesson }: PathViewProps) {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
@@ -36,7 +35,7 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
       return;
     }
     soundEffects.playTap();
-    // Toggle popover
+    // Toggle modal
     if (selectedLesson?.id === lesson.id) {
       setSelectedLesson(null);
     } else {
@@ -46,33 +45,90 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
 
   const handleStart = (lessonId: number) => {
     soundEffects.playTap();
+    setSelectedLesson(null);
     onStartLesson(lessonId);
+  };
+
+  const handleClose = () => {
+    soundEffects.playTap();
+    setSelectedLesson(null);
   };
 
   return (
     <div className="w-full relative min-h-[80vh] flex flex-col items-center">
-      {/* Path Header Mascot decoration */}
-      <div className="w-full max-w-lg mt-6 px-4 py-2 flex items-center justify-between bg-deep-violet border-3 border-void rounded-2xl shadow-[4px_4px_0_0_var(--color-void)]">
-        <div className="flex items-center gap-3">
-          <picture className="animate-float">
-            <source srcSet="/mascot-wave.webp" type="image/webp" />
-            <img src="/mascot-wave.png" alt="Greeting penguin" width={65} height={65} />
-          </picture>
-          <div>
-            <h3 className="font-black text-lg text-flame-orange leading-tight">CAMINO DE LINGO</h3>
-            <p className="ui-label text-[10px] text-slate-grey">Learn Spanish with the Stacks</p>
-          </div>
+      {/* Header Hero Card */}
+      <div
+        className="arcade-card-hero w-full max-w-lg mt-6 mx-auto flex items-center gap-4"
+        style={{
+          background: 'linear-gradient(120deg,#241038,#1a0e2e)',
+          border: '1px solid #3a2456',
+          borderRadius: '20px',
+          padding: '20px 24px',
+        }}
+      >
+        {/* Left: mascot */}
+        <picture className="animate-float flex-shrink-0">
+          <source srcSet="/mascot-wave.webp" type="image/webp" />
+          <img src="/mascot-wave.png" alt="Greeting penguin" width={62} height={62} />
+        </picture>
+
+        {/* Middle: title + subline */}
+        <div className="flex-1 min-w-0">
+          <h3
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '22px',
+              fontWeight: 900,
+              color: 'var(--color-flame-orange)',
+              lineHeight: 1.15,
+              marginBottom: '4px',
+            }}
+          >
+            Camino de Lingo
+          </h3>
+          <p style={{ color: 'var(--color-body-lifted)', fontSize: '13px', lineHeight: 1.4 }}>
+            Aprende español con los Stacks — una lección a la vez.
+          </p>
         </div>
-        <div className="text-right">
-          <span className="ui-label text-xs text-fuchsia-accent block">Level Progress</span>
-          <span className="font-mono text-sm font-black">{completedLessons.length} / {lessons.length} Lessons</span>
+
+        {/* Right: progress */}
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '9px',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              color: 'var(--color-fuchsia-accent)',
+              display: 'block',
+              marginBottom: '4px',
+            }}
+          >
+            Progreso
+          </span>
+          <span data-testid="path-progress" style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}>
+            {completedLessons.length}{' '}
+            <span style={{ color: 'var(--color-muted)' }}>/ {lessons.length}</span>
+          </span>
         </div>
       </div>
-      <DailyGoal stats={stats} />
 
       {/* Path Line and Staggered Nodes */}
       <div className="path-container mt-6 w-full relative">
-        <div className="path-line"></div>
+        {/* Subtle dashed vertical center line */}
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '2px',
+            top: '4rem',
+            bottom: '4rem',
+            borderLeft: '2px dashed var(--color-raised-edge)',
+            zIndex: 1,
+          }}
+        />
 
         {lessons.map((lesson, index) => {
           const isCompleted = completedLessons.includes(lesson.id);
@@ -80,33 +136,99 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
           const isUnlocked = index === 0 || completedLessons.includes(lessons[index - 1].id);
           const isLocked = !isUnlocked;
           const isActive = isUnlocked && !isCompleted;
-          
+
           const offsetStyle = {
-            transform: `translateX(${getHorizontalOffset(index)}px)`
+            transform: `translateX(${getHorizontalOffset(index)}px)`,
           };
+
+          // Node size and styles per state
+          const nodeSize = isCompleted ? 88 : isActive ? 96 : 84;
+
+          const nodeStyle: React.CSSProperties = isCompleted
+            ? {
+                width: `${nodeSize}px`,
+                height: `${nodeSize}px`,
+                backgroundColor: 'var(--color-flame-orange)',
+                border: '4px solid var(--color-hard-shadow)',
+                boxShadow: '0 6px 0 0 #7a3d14',
+              }
+            : isActive
+              ? {
+                  width: `${nodeSize}px`,
+                  height: `${nodeSize}px`,
+                  backgroundColor: 'var(--color-electric-blue)',
+                  border: '4px solid var(--color-hard-shadow)',
+                  boxShadow: '0 6px 0 0 #1a3e72',
+                }
+              : {
+                  width: `${nodeSize}px`,
+                  height: `${nodeSize}px`,
+                  backgroundColor: '#1a1228',
+                  border: '4px solid var(--color-hard-shadow)',
+                  filter: 'grayscale(0.5)',
+                  opacity: 0.85,
+                };
 
           return (
             <div key={lesson.id} className="node-wrapper" style={offsetStyle}>
-              {/* Crown for completed node */}
-              {isCompleted && (
-                <div className="node-crown text-lg">👑</div>
+              {/* ESTÁS AQUÍ pill for active node */}
+              {isActive && (
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '9px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '0.08em',
+                    backgroundColor: 'var(--color-fuchsia-accent)',
+                    color: 'var(--color-void)',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    marginBottom: '6px',
+                    display: 'block',
+                  }}
+                >
+                  ESTÁS AQUÍ
+                </span>
               )}
-              
+
               <button
                 onClick={() => handleNodeClick(lesson, isLocked)}
-                className={`path-node ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''} ${isLocked ? 'locked' : ''}`}
+                className={`path-node ${isCompleted ? 'completed' : ''} ${isActive ? 'active animate-pulse-glow' : ''} ${isLocked ? 'locked' : ''}`}
+                style={nodeStyle}
                 title={lesson.title}
-                disabled={isLocked && stats.lives === 0}
               >
-                <span className="text-3xl filter drop-shadow-md">{lesson.icon}</span>
-                
-                {/* Active glow indicator */}
-                {isActive && (
-                  <span className="absolute -inset-1 rounded-full border-3 border-fuchsia-accent animate-pulse-glow z-[-1]"></span>
+                <span style={{ fontSize: '32px', filter: 'drop-shadow(2px 2px 0px rgba(0,0,0,0.4))' }}>
+                  {lesson.icon}
+                </span>
+
+                {/* Lock chip bottom-right for locked nodes */}
+                {isLocked && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      bottom: '-4px',
+                      right: '-4px',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--color-void)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '11px',
+                      zIndex: 3,
+                    }}
+                  >
+                    🔒
+                  </span>
                 )}
               </button>
 
-              <span className="ui-label text-[10px] text-slate-grey mt-2 text-center max-w-[120px]">
+              <span
+                className="ui-label text-[10px] mt-2 text-center max-w-[120px]"
+                style={{ color: isLocked ? 'var(--color-muted-2)' : 'var(--color-slate-grey)' }}
+              >
                 {lesson.title}
               </span>
             </div>
@@ -114,43 +236,222 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
         })}
       </div>
 
-      {/* Retro Floating Lesson Popover Panel */}
+      {/* Centered Fixed-Overlay Lesson Modal */}
       {selectedLesson && (
-        <div className="fixed inset-x-4 bottom-24 md:absolute md:inset-x-auto md:-bottom-4 w-auto max-w-sm mx-auto z-50 animate-fade-in-up">
-          <div className="retro-card bg-deep-violet border-3 border-void p-5 text-ghost-white flex flex-col gap-4">
-            <div className="flex justify-between items-start gap-4">
-              <div>
-                <span className="ui-label text-[10px] text-fuchsia-accent block">Lesson {selectedLesson.id}</span>
-                <h4 className="text-xl font-black text-flame-orange leading-tight">{selectedLesson.title}</h4>
-                <p className="ui-label text-xs text-slate-grey mt-0.5">{selectedLesson.subtitle}</p>
-              </div>
-              <button 
-                onClick={() => { soundEffects.playTap(); setSelectedLesson(null); }}
-                className="bg-void text-slate-grey hover:text-ghost-white border-2 border-void rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs"
-              >
-                ✕
-              </button>
+        <div
+          className="animate-fade-up"
+          onClick={handleClose}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            background: 'rgba(8,5,14,0.72)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          {/* Card — stop propagation so clicks inside don't close */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '404px',
+              width: '100%',
+              borderRadius: '24px',
+              background: 'linear-gradient(160deg,#241038,#180c28)',
+              border: '1px solid #3a2456',
+              boxShadow: '0 12px 0 0 var(--color-hard-shadow), 0 30px 60px rgba(0,0,0,0.6)',
+              padding: '28px',
+              position: 'relative',
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={handleClose}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--color-void)',
+                border: '1px solid var(--color-raised-edge)',
+                color: 'var(--color-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 700,
+              }}
+            >
+              ✕
+            </button>
+
+            {/* Icon tile */}
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '18px',
+                backgroundColor: 'var(--color-electric-blue)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '30px',
+                marginBottom: '16px',
+              }}
+            >
+              {selectedLesson.icon}
             </div>
-            
-            <p className="text-xs text-ghost-white/90 leading-relaxed">
+
+            {/* Fuchsia kicker */}
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                fontWeight: 800,
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.1em',
+                color: 'var(--color-fuchsia-accent)',
+                display: 'block',
+                marginBottom: '6px',
+              }}
+            >
+              Lección {selectedLesson.id} · Siguiente
+            </span>
+
+            {/* Title */}
+            <h4
+              style={{
+                fontSize: '21px',
+                fontWeight: 900,
+                color: 'var(--color-flame-orange)',
+                lineHeight: 1.2,
+                marginBottom: '4px',
+              }}
+            >
+              {selectedLesson.title}
+            </h4>
+
+            {/* Subtitle */}
+            <p
+              style={{
+                color: 'var(--color-muted)',
+                fontSize: '12px',
+                marginBottom: '12px',
+              }}
+            >
+              {selectedLesson.subtitle}
+            </p>
+
+            {/* Description */}
+            <p
+              style={{
+                color: 'var(--color-body-lifted)',
+                fontSize: '14px',
+                lineHeight: 1.55,
+                marginBottom: '16px',
+              }}
+            >
               {selectedLesson.description}
             </p>
 
-            <div className="flex justify-between items-center bg-void/50 p-2.5 rounded-xl border border-void">
-              <span className="ui-label text-slate-grey text-[10px]">Reward</span>
-              <span className="font-mono text-xs font-bold text-flame-orange">🎯 +{selectedLesson.xpReward} XP</span>
+            {/* Reward row */}
+            <div
+              style={{
+                backgroundColor: 'var(--color-void)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '12px',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.1em',
+                  color: 'var(--color-muted)',
+                }}
+              >
+                Recompensa
+              </span>
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'var(--color-flame-orange)',
+                }}
+              >
+                🎯 +{selectedLesson.xpReward} XP
+              </span>
             </div>
 
+            {/* Meta chips row */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                marginBottom: '20px',
+              }}
+            >
+              {[
+                `${selectedLesson.exercises.length} ejercicios`,
+                `~${selectedLesson.exercises.length} min`,
+                `❤️ ${stats.lives} vidas`,
+              ].map((chip) => (
+                <span
+                  key={chip}
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    backgroundColor: 'var(--color-card-alt)',
+                    border: '1px solid var(--color-raised-edge-2)',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    color: 'var(--color-body-lifted)',
+                    whiteSpace: 'nowrap' as const,
+                  }}
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+
+            {/* CTA button */}
             <button
-              onClick={() => handleStart(selectedLesson.id)}
+              onClick={() => {
+                if (stats.lives > 0) {
+                  handleStart(selectedLesson.id);
+                }
+              }}
               disabled={stats.lives === 0}
               className={`pill-button pill-button-orange w-full ${stats.lives === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {stats.lives === 0 ? "REQUIRES LIVES" : "START LESSON"}
+              {stats.lives === 0 ? 'Sin vidas' : 'Empezar lección →'}
             </button>
+
             {stats.lives === 0 && (
-              <p className="text-[10px] text-red-400 text-center font-bold">
-                ⚠️ You have 0 lives! Reset your stats in Settings to recover your lives.
+              <p
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--color-muted)',
+                  textAlign: 'center' as const,
+                  marginTop: '10px',
+                  lineHeight: 1.45,
+                }}
+              >
+                Necesitas vidas para empezar. Recupéralas con el tiempo o reinicia en Ajustes.
               </p>
             )}
           </div>
