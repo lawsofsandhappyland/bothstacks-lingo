@@ -1,5 +1,20 @@
 # BothLingo — Design Polish Handover
 
+> **STATUS — IMPLEMENTED (2026-06-14).** This brief, plus the Claude Design
+> facelift package (`design_handoff_bothlingo_facelift`), has been built and
+> merged to `main` across 10 feature commits (F1–F10), each run through the
+> Sonnet → build/test gate → Codex review rail. Delivered: a real responsive
+> desktop shell (268px sidebar + sticky header + right rail), a brand-new
+> **Repaso** spaced-repetition feature (real model + closed-loop review
+> sessions), an answer-first **Progreso** analytics dashboard (mastery,
+> habit heatmap, range switcher) backed by a persisted activity log, the
+> centered lesson modal (off-screen-CTA P0 fixed), locked-treasure
+> achievements, consumer **Ajustes** (all developer language stripped, real
+> toggle switches), the **Tutor** orb (idle/listening/speaking) with warm
+> copy, and a 5-tab + gear mobile nav. 203 tests green; lint + build pass;
+> verified in-browser at desktop and mobile widths. The notes below are kept
+> as the original critique for reference.
+
 **Live app:** https://bothlingo-831930974109.australia-southeast1.run.app
 **Stack:** React 19 + Vite, Tailwind v4, TypeScript. Dark "retro arcade" theme.
 **Aesthetic intent:** retro/pixel arcade, dark canvas, neon accents, a pixel penguin mascot ("El Pingüino"). The *intent* is good; the *execution* reads amateurish in the spots below.
