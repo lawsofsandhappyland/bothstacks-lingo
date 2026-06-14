@@ -42,6 +42,12 @@ function readStoredText(key: string, fallback: string): string {
   }
 }
 
+/**
+ * Root application shell that bootstraps anonymous Firebase auth and loads user data from Firestore
+ * with a localStorage fallback and one-time migration. Owns the global stats, streak, and
+ * completed-lesson state, and switches between path, lesson, tutor, achievements, and settings
+ * views with a first-run onboarding overlay.
+ */
 export default function App() {
   const [view, setView] = useState<ViewType>('path');
   const [stats, setStats] = useState<UserStats>(DEFAULT_STATS);
