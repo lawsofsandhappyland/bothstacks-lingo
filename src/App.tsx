@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { ViewType, UserStats } from './types';
+import type { ViewType, UserStats, Lesson } from './types';
 import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats, regenerateLives, dailyGoalProgress, DAILY_XP_GOAL } from './lib/progress';
 import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
 import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
-import { buildReviewQueue, dueItems, perLessonDue, collectVocab, markReviewed } from './lib/review';
+import { buildReviewQueue, dueItems, perLessonDue, collectVocab, markReviewed, selectReviewBatch } from './lib/review';
 import type { ReviewLog } from './lib/review';
 import { evaluateAchievements } from './lib/achievements';
+import { buildReviewLesson, REVIEW_SESSION_ID } from './lib/reviewSession';
 
 import Onboarding from './components/Onboarding';
 import OfflineBanner from './components/OfflineBanner';
@@ -74,6 +75,7 @@ export default function App() {
   const [uid, setUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [reviewLog, setReviewLog] = useState<ReviewLog>({});
+  const [reviewSession, setReviewSession] = useState<{ lesson: Lesson; keys: string[] } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
       return !localStorage.getItem('bothlingo_onboarded');
@@ -247,38 +249,32 @@ export default function App() {
   const totalDue = due.length;
   const perLesson = perLessonDue(completedLessons, lessonsData, reviewLog);
 
-  // onStartReview: pick the lesson with the most due words, fall back to weakest item's lesson.
-  // Guard the zero-lives case the same way PathView gates lesson starts — a review IS a lesson run.
   const noLives = stats.lives <= 0;
   const onStartReview = () => {
     if (noLives) return;
     soundEffects.playTap();
-    let targetLessonId: number | null = null;
 
-    if (perLesson.length > 0) {
-      const withDue = perLesson.filter(l => l.dueCount > 0);
-      if (withDue.length > 0) {
-        // Sort by dueCount desc; tie-break by weakest due item's lesson
-        const sorted = [...withDue].sort((a, b) => {
-          if (b.dueCount !== a.dueCount) return b.dueCount - a.dueCount;
-          const aWeakest = due.find(item => item.lessonId === a.lessonId);
-          const bWeakest = due.find(item => item.lessonId === b.lessonId);
-          const aStr = aWeakest?.memoryStrength ?? 100;
-          const bStr = bWeakest?.memoryStrength ?? 100;
-          return aStr - bStr;
-        });
-        targetLessonId = sorted[0].lessonId;
-      } else if (due.length > 0) {
-        targetLessonId = due[0].lessonId;
-      }
-    } else if (due.length > 0) {
-      targetLessonId = due[0].lessonId;
-    }
+    const batch = selectReviewBatch(queue, 8);
+    if (batch.length === 0) return;
 
-    if (targetLessonId !== null) {
-      setActiveLessonId(targetLessonId);
-      setView('lesson');
-    }
+    const pool = collectVocab(completedLessons, lessonsData);
+    const lesson = buildReviewLesson(batch, pool);
+    const keys = batch.map(i => i.key);
+    setReviewSession({ lesson, keys });
+    setActiveLessonId(null);
+    setView('lesson');
+  };
+
+  const handleReviewComplete = (xpReward: number) => {
+    const result = computeLessonCompletion(stats, completedLessons, REVIEW_SESSION_ID, xpReward);
+    const cleaned = result.completedLessons.filter(id => lessonsData.some(l => l.id === id));
+    setStats(result.stats);
+    setCompletedLessons(cleaned);
+    const newLog = markReviewed(reviewLog, reviewSession?.keys ?? []);
+    setReviewLog(newLog);
+    syncToFirestore(result.stats, cleaned, tutorModel, newLog);
+    setReviewSession(null);
+    setView('repaso');
   };
 
   // Level computed from XP
@@ -357,7 +353,15 @@ export default function App() {
         {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
         <main ref={mainRef} id="main-content" tabIndex={-1} className="flex-grow flex items-center justify-center">
           <Suspense fallback={<div className="flex-grow flex items-center justify-center"><p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p></div>}>
-            {activeLesson ? (
+            {reviewSession ? (
+              <LessonRunner
+                lesson={reviewSession.lesson}
+                stats={stats}
+                onLessonComplete={handleReviewComplete}
+                onLoseLife={handleLoseLife}
+                onQuit={() => { soundEffects.playTap(); setReviewSession(null); setView('repaso'); }}
+              />
+            ) : activeLesson ? (
               <LessonRunner
                 lesson={activeLesson}
                 stats={stats}
