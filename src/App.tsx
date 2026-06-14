@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { ViewType, UserStats } from './types';
 import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
+import { getAuthReady } from './lib/firebase';
+import { loadUserDoc, saveUserDoc } from './lib/persistence';
 
 // Subcomponents
 import PathView from './components/PathView';
@@ -24,12 +26,13 @@ const DEFAULT_STATS: UserStats = {
   lastActiveDate: null
 };
 
+const DEFAULT_TUTOR_MODEL = 'gemini-2.5-flash';
+
 function readStoredJson<T>(key: string, fallback: T): T {
   try {
     const storedValue = localStorage.getItem(key);
     return storedValue ? JSON.parse(storedValue) as T : fallback;
-  } catch (error) {
-    console.error(`Local storage read failed for ${key}`, error);
+  } catch {
     return fallback;
   }
 }
@@ -37,26 +40,82 @@ function readStoredJson<T>(key: string, fallback: T): T {
 function readStoredText(key: string, fallback: string): string {
   try {
     return localStorage.getItem(key) || fallback;
-  } catch (error) {
-    console.error(`Local storage read failed for ${key}`, error);
+  } catch {
     return fallback;
   }
 }
 
 export default function App() {
   const [view, setView] = useState<ViewType>('path');
-  const [stats, setStats] = useState<UserStats>(() => readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS));
-  const [completedLessons, setCompletedLessons] = useState<number[]>(() => readStoredJson(STORAGE_KEYS.COMPLETED, []));
+  const [stats, setStats] = useState<UserStats>(DEFAULT_STATS);
+  const [completedLessons, setCompletedLessons] = useState<number[]>([]);
   const [activeLessonId, setActiveLessonId] = useState<number | null>(null);
-  const [tutorModel, setTutorModel] = useState<string>(() => readStoredText(STORAGE_KEYS.MODEL, 'gemini-2.5-flash'));
+  const [tutorModel, setTutorModel] = useState<string>(DEFAULT_TUTOR_MODEL);
+  const [uid, setUid] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Bootstrap: auth → load from Firestore (or migrate from localStorage)
   useEffect(() => {
     localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
+
+    getAuthReady().then(async (user) => {
+      if (!user) {
+        // Auth failed — fall back to localStorage
+        setStats(readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS));
+        setCompletedLessons(readStoredJson(STORAGE_KEYS.COMPLETED, []));
+        setTutorModel(readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL));
+        setLoading(false);
+        return;
+      }
+
+      setUid(user.uid);
+      const remote = await loadUserDoc(user.uid);
+
+      if (remote) {
+        setStats(remote.stats);
+        setCompletedLessons(remote.completedLessons);
+        setTutorModel(remote.tutorModel || DEFAULT_TUTOR_MODEL);
+        setLoading(false);
+        return;
+      }
+
+      // No Firestore doc — migrate from localStorage
+      const localStats = readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS);
+      const localCompleted = readStoredJson(STORAGE_KEYS.COMPLETED, []);
+      const localModel = readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL);
+
+      setStats(localStats);
+      setCompletedLessons(localCompleted);
+      setTutorModel(localModel);
+      setLoading(false);
+
+      // Seed Firestore with local data
+      await saveUserDoc(user.uid, {
+        stats: localStats,
+        completedLessons: localCompleted,
+        tutorModel: localModel,
+      }).catch(() => {});
+
+      // Clear localStorage after migration
+      localStorage.removeItem(STORAGE_KEYS.STATS);
+      localStorage.removeItem(STORAGE_KEYS.COMPLETED);
+      localStorage.removeItem(STORAGE_KEYS.MODEL);
+    });
   }, []);
 
-  const saveStats = (newStats: UserStats) => {
-    setStats(newStats);
-    localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
+  // Persist state to Firestore on change
+  const syncToFirestore = (newStats: UserStats, newCompleted: number[], newModel: string) => {
+    if (!uid) {
+      localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
+      localStorage.setItem(STORAGE_KEYS.COMPLETED, JSON.stringify(newCompleted));
+      localStorage.setItem(STORAGE_KEYS.MODEL, newModel);
+      return;
+    }
+    saveUserDoc(uid, {
+      stats: newStats,
+      completedLessons: newCompleted,
+      tutorModel: newModel,
+    }).catch((err) => console.error('Firestore save failed', err));
   };
 
   const handleLoseLife = () => {
@@ -64,22 +123,19 @@ export default function App() {
       ...stats,
       lives: Math.max(0, stats.lives - 1)
     };
-    saveStats(updatedStats);
+    setStats(updatedStats);
+    syncToFirestore(updatedStats, completedLessons, tutorModel);
   };
 
   const handleLessonComplete = (xpReward: number) => {
     if (activeLessonId === null) return;
 
-    // Add to completed lessons
     const wasAlreadyCompleted = completedLessons.includes(activeLessonId);
     const newCompleted = [...completedLessons];
     if (!newCompleted.includes(activeLessonId)) {
       newCompleted.push(activeLessonId);
-      setCompletedLessons(newCompleted);
-      localStorage.setItem(STORAGE_KEYS.COMPLETED, JSON.stringify(newCompleted));
     }
 
-    // Update streak logic
     const todayStr = new Date().toDateString();
     let newStreak = stats.streak;
 
@@ -93,7 +149,6 @@ export default function App() {
       if (stats.lastActiveDate === yesterdayStr) {
         newStreak += 1;
       } else {
-        // Streak broken
         newStreak = 1;
       }
     }
@@ -102,11 +157,14 @@ export default function App() {
       ...stats,
       xp: wasAlreadyCompleted ? stats.xp : stats.xp + xpReward,
       streak: newStreak,
-      lives: stats.lives, // maintain current lives
+      lives: stats.lives,
       lastActiveDate: todayStr
     };
 
-    saveStats(updatedStats);
+    setStats(updatedStats);
+    setCompletedLessons(newCompleted);
+    syncToFirestore(updatedStats, newCompleted, tutorModel);
+
     setActiveLessonId(null);
     setView('path');
   };
@@ -115,27 +173,48 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.STATS);
     localStorage.removeItem(STORAGE_KEYS.COMPLETED);
     localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
-    setStats(DEFAULT_STATS);
+
+    const resetStats = { ...DEFAULT_STATS };
+    setStats(resetStats);
     setCompletedLessons([]);
     setActiveLessonId(null);
     setView('path');
+
+    syncToFirestore(resetStats, [], tutorModel);
+  };
+
+  const handleSetTutorModel = (m: string) => {
+    setTutorModel(m);
+    syncToFirestore(stats, completedLessons, m);
   };
 
   const activeLesson = lessonsData.find(l => l.id === activeLessonId);
 
-  // Sound navigations helper
   const handleNavClick = (targetView: ViewType) => {
     soundEffects.playTap();
     setView(targetView);
   };
 
+  // Loading screen while auth initializes
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-void text-ghost-white flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4 animate-float">
+          <picture>
+            <source srcSet="/mascot.webp" type="image/webp" />
+            <img src="/mascot.png" alt="Loading mascot" width={100} height={100} className="drop-shadow-xl" />
+          </picture>
+          <p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-void text-ghost-white flex flex-col font-sans pb-28">
-      {/* 1. Global stats top navbar (Hidden in active lesson mode) */}
       {view !== 'lesson' && (
         <header className="sticky top-0 bg-void/90 backdrop-blur-md border-b-3 border-void py-3.5 px-4 z-40 transition-all">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
-            {/* Mascot and Brand logo */}
             <div className="flex items-center gap-2">
               <picture>
                 <source srcSet="/logomark.png" type="image/png" />
@@ -146,21 +225,15 @@ export default function App() {
               </h1>
             </div>
 
-            {/* Profile Statistics badges */}
             <div className="flex items-center gap-4">
-              {/* Streak */}
               <div className="flex items-center gap-1" title="Daily Streak">
                 <span className="text-base select-none">🔥</span>
                 <span className="font-mono text-sm font-black text-fuchsia-accent">{stats.streak}</span>
               </div>
-              
-              {/* XP */}
               <div className="flex items-center gap-1" title="XP Gained">
                 <span className="text-base select-none">🎯</span>
                 <span className="font-mono text-sm font-black text-flame-orange">{stats.xp} XP</span>
               </div>
-
-              {/* Lives */}
               <div className="flex items-center gap-1" title="Hearts Remaining">
                 <span className="text-base select-none">❤️</span>
                 <span className="font-mono text-sm font-black text-electric-blue">{stats.lives}</span>
@@ -170,7 +243,6 @@ export default function App() {
         </header>
       )}
 
-      {/* 2. Main content view manager router */}
       <main className="flex-grow flex items-center justify-center">
         {view === 'lesson' && activeLesson ? (
           <LessonRunner
@@ -193,13 +265,12 @@ export default function App() {
           <SettingsView
             stats={stats}
             tutorModel={tutorModel}
-            setTutorModel={(m) => { setTutorModel(m); localStorage.setItem(STORAGE_KEYS.MODEL, m); }}
+            setTutorModel={handleSetTutorModel}
             resetStats={handleResetStats}
           />
         )}
       </main>
 
-      {/* 3. Bottom floating navigator control bar (Hidden in active lesson mode) */}
       {view !== 'lesson' && (
         <nav className="floating-navbar select-none">
           <button
