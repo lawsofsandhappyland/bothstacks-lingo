@@ -3,13 +3,6 @@ import type { UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
 import ConfirmDialog from './ConfirmDialog';
 
-/**
- * Props for the SettingsView component.
- * @property {UserStats} stats - Current user statistics (XP, streak, lives).
- * @property {string} tutorModel - Currently selected Gemini model identifier.
- * @property {(model: string) => void} setTutorModel - Callback to update the tutor model selection.
- * @property {() => void} resetStats - Callback to reset user stats to default values.
- */
 interface SettingsViewProps {
   stats: UserStats;
   tutorModel: string;
@@ -17,124 +10,242 @@ interface SettingsViewProps {
   resetStats: () => void;
 }
 
-/**
- * Settings screen providing Gemini tutor model selection, a profile stats summary (XP, streak, lives),
- * and a reset-stats danger action.
- */
+const STYLE_TO_MODEL = {
+  friendly: 'gemini-2.5-flash',
+  patient: 'gemini-1.5-pro',
+  fast: 'gemini-2.5-flash-lite',
+} as const;
+
+type TutorStyle = keyof typeof STYLE_TO_MODEL;
+
+function modelToStyle(model: string): TutorStyle {
+  const entry = (Object.entries(STYLE_TO_MODEL) as [TutorStyle, string][]).find(
+    ([, v]) => v === model
+  );
+  return entry ? entry[0] : 'friendly';
+}
+
+interface ToggleProps {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  ariaLabel: string;
+}
+
+function Toggle({ checked, onChange, ariaLabel }: ToggleProps) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={() => onChange(!checked)}
+      style={{
+        position: 'relative',
+        width: 52,
+        height: 30,
+        borderRadius: 9999,
+        background: checked ? 'var(--color-success-green)' : 'var(--color-raised-edge-3)',
+        border: 'none',
+        cursor: 'pointer',
+        flexShrink: 0,
+        transition: 'background 0.2s ease',
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 3,
+          left: checked ? 24 : 2,
+          width: 24,
+          height: 24,
+          borderRadius: '50%',
+          background: '#fff',
+          transition: 'left 0.2s ease',
+          display: 'block',
+        }}
+      />
+    </button>
+  );
+}
+
 export default function SettingsView({
-  stats,
   tutorModel,
   setTutorModel,
-  resetStats
+  resetStats,
 }: SettingsViewProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [muted, setMuted] = useState(() => soundEffects.isMuted());
+
+  // Sound toggle
+  const [soundOn, setSoundOn] = useState(() => !soundEffects.isMuted());
+
+  // Animations toggle — persisted
+  const [animOn, setAnimOn] = useState(() => {
+    try {
+      return localStorage.getItem('bothlingo_pref_anim') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const activeStyle = modelToStyle(tutorModel);
+
+  const handleStyleClick = (style: TutorStyle) => {
+    soundEffects.playTap();
+    setTutorModel(STYLE_TO_MODEL[style]);
+  };
+
+  const handleSoundToggle = (next: boolean) => {
+    setSoundOn(next);
+    soundEffects.setMuted(!next);
+  };
+
+  const handleAnimToggle = (next: boolean) => {
+    setAnimOn(next);
+    try {
+      localStorage.setItem('bothlingo_pref_anim', next ? 'true' : 'false');
+    } catch { /* ignore */ }
+    if (next) {
+      document.documentElement.classList.remove('bl-reduce-anim');
+    } else {
+      document.documentElement.classList.add('bl-reduce-anim');
+    }
+  };
+
+  const styleButtons: { style: TutorStyle; label: string }[] = [
+    { style: 'friendly', label: '😊 Amigable' },
+    { style: 'patient', label: '🧘 Paciente' },
+    { style: 'fast', label: '⚡ Rápido' },
+  ];
 
   return (
-    <div className="animate-fade-in-up w-full max-w-lg px-4 py-8 mx-auto">
-      <div className="retro-card bg-deep-violet text-ghost-white flex flex-col gap-6">
-        <div className="flex items-center gap-4">
-          <picture className="animate-float">
-            <source srcSet="/mascot-tinker.webp" type="image/webp" />
-            <img src="/mascot-tinker.png" alt="Tinkering penguin" width={80} height={80} className="drop-shadow-lg" />
-          </picture>
-          <div>
-            <h2 className="text-2xl font-black text-flame-orange tracking-tight">AJUSTES</h2>
-            <p className="ui-label text-slate-grey">Configure your brand tutor</p>
-          </div>
-        </div>
-
-        <hr className="border-void border-2" />
-
-        {/* Gemini API Section */}
-        <div className="flex flex-col gap-2">
-          <label className="ui-label text-fuchsia-accent">AI Tutor Access</label>
-          <p className="text-xs text-slate-grey mb-1">
-            El Pingüino uses the server-side <span className="font-mono">GEMINI_API_KEY</span> environment variable. The browser never stores or receives your API key.
+    <div className="animate-fade-in-up w-full max-w-lg px-4 py-8 mx-auto flex flex-col gap-4">
+      {/* 1. Header card */}
+      <div className="arcade-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <picture className="animate-float" style={{ flexShrink: 0 }}>
+          <source srcSet="/mascot-tinker.webp" type="image/webp" />
+          <img src="/mascot-tinker.png" alt="El Pingüino arreglando cosas" width={64} height={64} className="drop-shadow-lg" />
+        </picture>
+        <div>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--color-flame-orange)', letterSpacing: '-0.02em' }}>
+            Ajustes
+          </h2>
+          <p style={{ fontSize: '0.875rem', color: 'var(--color-body-lifted)', marginTop: 2 }}>
+            Haz que BothLingo sea tuyo.
           </p>
-          <p className="text-[10px] text-slate-grey mt-1">
-            If the server is not configured, Tutor mode falls back to guided practice topics instead of exposing a client-side secret.
-          </p>
-
-          {/* Model selection dropdown */}
-          <div className="flex flex-col gap-1.5 mt-3">
-            <label className="ui-label text-electric-blue text-[10px]">Gemini Model Selection</label>
-            <select
-              value={tutorModel}
-              onChange={(e) => { soundEffects.playTap(); setTutorModel(e.target.value); }}
-              className="bg-void border-3 border-void rounded-xl px-4 py-2.5 text-ghost-white font-mono text-xs focus:outline-none focus:border-fuchsia-accent cursor-pointer"
-            >
-              <option value="gemini-3.1-flash-live-preview">Gemini 3.1 Flash Live (Voice practice)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Text tutor fallback)</option>
-              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Fastest & lowest cost)</option>
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash (Legacy fast model)</option>
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash (Lightweight & Efficient)</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning & Detailed Grammar)</option>
-            </select>
-          </div>
-        </div>
-
-        <hr className="border-void border-2" />
-
-        {/* Profile Stats Overview */}
-        <div className="flex flex-col gap-3">
-          <h3 className="ui-label text-electric-blue">Profile Stats Summary</h3>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-void p-3 rounded-xl border-2 border-void">
-              <span className="text-xl block">🎯</span>
-              <span className="ui-label text-xs text-slate-grey">XP</span>
-              <span className="font-mono font-black text-lg block text-flame-orange">{stats.xp}</span>
-            </div>
-            <div className="bg-void p-3 rounded-xl border-2 border-void">
-              <span className="text-xl block">🔥</span>
-              <span className="ui-label text-xs text-slate-grey">Streak</span>
-              <span className="font-mono font-black text-lg block text-fuchsia-accent">{stats.streak} days</span>
-            </div>
-            <div className="bg-void p-3 rounded-xl border-2 border-void">
-              <span className="text-xl block">❤️</span>
-              <span className="ui-label text-xs text-slate-grey">Lives</span>
-              <span className="font-mono font-black text-lg block text-electric-blue">{stats.lives}/5</span>
-            </div>
-          </div>
-        </div>
-
-        <hr className="border-void border-2" />
-
-        {/* Preferences */}
-        <div className="flex flex-col gap-3">
-          <h3 className="ui-label text-electric-blue">Preferences</h3>
-          <div className="flex items-center justify-between">
-            <span className="ui-label text-ghost-white">Sound Effects</span>
-            <button
-              aria-label="Toggle sound effects"
-              aria-pressed={!muted}
-              onClick={() => { const next = !muted; soundEffects.setMuted(next); setMuted(next); }}
-              className="pill-button bg-void border-2 border-fuchsia-accent text-ghost-white hover:bg-fuchsia-accent min-w-[64px]"
-            >
-              {muted ? '🔇' : '🔊'}
-            </button>
-          </div>
-        </div>
-
-        <hr className="border-void border-2" />
-
-        {/* Danger Zone */}
-        <div className="flex flex-col gap-3">
-          <h3 className="ui-label text-red-500">Danger Zone</h3>
-          <button
-            onClick={() => { soundEffects.playTap(); setConfirmOpen(true); }}
-            className="pill-button bg-red-600 border-red-950 text-ghost-white hover:bg-red-500"
-          >
-            Reset All Stats
-          </button>
         </div>
       </div>
+
+      {/* 2. Estilo del tutor */}
+      <div className="arcade-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <p className="ui-label" style={{ color: 'var(--color-fuchsia-accent)' }}>Estilo del tutor</p>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--color-body-lifted)' }}>
+          Elige cómo suena El Pingüino cuando practicas en voz alta.
+        </p>
+        <div
+          role="radiogroup"
+          aria-label="Estilo del tutor"
+          style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}
+        >
+          {styleButtons.map(({ style, label }) => {
+            const isActive = activeStyle === style;
+            return (
+              <button
+                key={style}
+                role="radio"
+                aria-checked={isActive}
+                onClick={() => handleStyleClick(style)}
+                style={{
+                  background: isActive ? 'rgba(232,57,246,0.14)' : 'var(--color-void)',
+                  border: isActive
+                    ? '1.5px solid var(--color-fuchsia-accent)'
+                    : '1.5px solid var(--color-raised-edge-3)',
+                  borderRadius: 9999,
+                  padding: '0.5rem 1.25rem',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 700,
+                  color: isActive ? '#fff' : 'var(--color-body-lifted)',
+                  cursor: 'pointer',
+                  letterSpacing: '0.03em',
+                  transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. Preferencias */}
+      <div className="arcade-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <p className="ui-label" style={{ color: 'var(--color-fuchsia-accent)' }}>Preferencias</p>
+
+        {/* Sound */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-ghost-white)' }}>Efectos de sonido</p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--color-body-lifted)', marginTop: 2 }}>Pops y campanitas al acertar.</p>
+          </div>
+          <Toggle
+            checked={soundOn}
+            onChange={handleSoundToggle}
+            ariaLabel="Efectos de sonido"
+          />
+        </div>
+
+        <div style={{ height: 1, background: 'var(--color-raised-edge)' }} />
+
+        {/* Animations */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-ghost-white)' }}>Animaciones</p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--color-body-lifted)', marginTop: 2 }}>Celebraciones y movimiento del camino.</p>
+          </div>
+          <Toggle
+            checked={animOn}
+            onChange={handleAnimToggle}
+            ariaLabel="Animaciones"
+          />
+        </div>
+      </div>
+
+      {/* 4. Empezar de nuevo */}
+      <div className="arcade-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <p className="ui-label" style={{ color: 'var(--color-fuchsia-accent)' }}>Empezar de nuevo</p>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--color-body-lifted)' }}>
+          Borra tu XP, tu racha y tus lecciones. No se puede deshacer.
+        </p>
+        <button
+          onClick={() => setConfirmOpen(true)}
+          style={{
+            background: 'transparent',
+            border: '1.5px solid #5b1d1d',
+            borderRadius: 9999,
+            padding: '0.625rem 1.5rem',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.8125rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: '#fca5a5',
+            cursor: 'pointer',
+            alignSelf: 'flex-start',
+            transition: 'background 0.15s ease',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#3a1414'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+        >
+          Reiniciar
+        </button>
+      </div>
+
       <ConfirmDialog
         open={confirmOpen}
-        title="Reset all stats?"
-        message="This sets your XP to 0 and restores your 5 lives. This cannot be undone."
-        confirmLabel="Reset"
-        cancelLabel="Keep my stats"
+        title="¿Empezar de nuevo?"
+        message="Esto pone tu XP a 0 y restaura tus 5 vidas. No se puede deshacer."
+        confirmLabel="Reiniciar"
+        cancelLabel="Conservar mis datos"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => { soundEffects.playHeartLost(); resetStats(); setConfirmOpen(false); }}
       />

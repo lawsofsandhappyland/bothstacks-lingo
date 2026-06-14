@@ -631,6 +631,12 @@ html, body {
   }
 }
 
+.bl-reduce-anim *, .bl-reduce-anim *::before, .bl-reduce-anim *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 /* ---- Screen Reader Utilities ---- */
 
 .sr-only {

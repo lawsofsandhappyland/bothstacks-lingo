@@ -184,6 +184,15 @@ export default function App() {
     });
   }, []);
 
+  // Apply persisted Animaciones preference before the user opens Settings
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('bothlingo_pref_anim') === 'false') {
+        document.documentElement.classList.add('bl-reduce-anim');
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   // Regen lives while the app is open (checks every 60 s)
   useEffect(() => {
     const id = setInterval(() => {
