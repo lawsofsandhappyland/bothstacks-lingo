@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { UserStats } from '../types';
 import type { ReviewLog } from '../lib/review';
 import type { ActivityLog, RangeKey } from '../lib/analytics';
+import { plural } from '../lib/format';
 import {
   rangeSummary,
   trendPoints,
@@ -482,7 +483,7 @@ export default function ProgressView({ stats, completedLessons, reviewLog, activ
 
           {stats.streak > 0 && (
             <p style={{ fontSize: 12, color: 'var(--color-body-lifted)', lineHeight: 1.5 }}>
-              Llevas {stats.streak} día(s) seguidos — la constancia es lo que fija el vocabulario.
+              Llevas {plural(stats.streak, 'día seguido', 'días seguidos')} — la constancia es lo que fija el vocabulario.
             </p>
           )}
         </div>

@@ -387,63 +387,6 @@ html, body {
   filter: drop-shadow(2px 2px 0px var(--color-void));
 }
 
-/* Floating overlay menu bar at bottom */
-.floating-navbar {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  background-color: var(--color-void);
-  border: 3px solid var(--color-void);
-  border-radius: 9999px;
-  box-shadow: 0px 8px 30px rgba(0, 0, 0, 0.5);
-  display: flex;
-  gap: 0.5rem;
-  padding: 6px;
-  max-width: calc(100vw - 24px);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.floating-navbar::-webkit-scrollbar {
-  display: none;
-}
-
-.nav-pill {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-ghost-white);
-  background: transparent;
-  border: none;
-  border-radius: 9999px;
-  padding: 10px 20px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.nav-pill:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-.nav-pill.active {
-  background-color: var(--color-fuchsia-accent);
-  color: var(--color-ghost-white);
-  box-shadow: 0 0 10px rgba(232, 57, 246, 0.4);
-}
-
-/* Keep all nav pills on-screen on narrow phones (5+ items). */
-@media (max-width: 400px) {
-  .floating-navbar {
-    gap: 0.25rem;
-  }
-  .nav-pill {
-    padding: 9px 13px;
-  }
-}
 
 /* ---- Desktop App Shell ---- */
 

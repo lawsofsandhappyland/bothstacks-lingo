@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PathView from './PathView';
 import type { Lesson, UserStats } from '../types';
@@ -174,5 +174,37 @@ describe('PathView — locked lesson', () => {
     // Familia (id 3) is locked because Comida (id 2) is not completed
     await userEvent.click(screen.getByTitle('Familia'));
     expect(screen.queryByText('Learn Spanish words for family members.')).toBeNull();
+  });
+});
+
+describe('PathView — lesson modal accessibility', () => {
+  it('when the lesson modal is open, a dialog with aria-modal is present', async () => {
+    render(
+      <PathView
+        lessons={lessons}
+        stats={{ ...defaultStats, lives: 5 }}
+        completedLessons={[]}
+        onStartLesson={vi.fn()}
+      />
+    );
+    await userEvent.click(screen.getByTitle('Saludos'));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeDefined();
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+  });
+
+  it('pressing Escape closes the modal', async () => {
+    render(
+      <PathView
+        lessons={lessons}
+        stats={{ ...defaultStats, lives: 5 }}
+        completedLessons={[]}
+        onStartLesson={vi.fn()}
+      />
+    );
+    await userEvent.click(screen.getByTitle('Saludos'));
+    expect(screen.getByRole('dialog')).toBeDefined();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

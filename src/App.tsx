@@ -11,6 +11,7 @@ import { recordActivity, dayKey } from './lib/analytics';
 import type { ActivityLog } from './lib/analytics';
 import { evaluateAchievements } from './lib/achievements';
 import { buildReviewLesson, REVIEW_SESSION_ID } from './lib/reviewSession';
+import { plural } from './lib/format';
 
 import Onboarding from './components/Onboarding';
 import OfflineBanner from './components/OfflineBanner';
@@ -873,11 +874,11 @@ export default function App() {
                     {stats.streak}
                   </span>
                   {' '}
-                  <span style={{ fontSize: 13, color: 'var(--color-body-lifted)' }}>días seguidos</span>
+                  <span style={{ fontSize: 13, color: 'var(--color-body-lifted)' }}>{stats.streak === 1 ? 'día seguido' : 'días seguidos'}</span>
                 </p>
                 {(stats.streakFreezes ?? 0) > 0 && (
                   <p style={{ fontSize: 12, color: 'var(--color-electric-blue)', marginTop: 6 }}>
-                    ❄️ {stats.streakFreezes} congelación(es)
+                    ❄️ {plural(stats.streakFreezes ?? 0, 'congelación', 'congelaciones')}
                   </p>
                 )}
               </div>

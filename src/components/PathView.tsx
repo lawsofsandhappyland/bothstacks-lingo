@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Lesson, UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
 
@@ -22,6 +22,53 @@ interface PathViewProps {
  */
 export default function PathView({ lessons, stats, completedLessons, onStartLesson }: PathViewProps) {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const prevFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedLesson) return;
+
+    prevFocusRef.current = document.activeElement as HTMLElement | null;
+    closeBtnRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        soundEffects.playTap();
+        setSelectedLesson(null);
+        return;
+      }
+
+      if (e.key === 'Tab' && cardRef.current) {
+        const focusable = Array.from(
+          cardRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      prevFocusRef.current?.focus();
+    };
+  }, [selectedLesson]);
 
   // Stagger nodes horizontally (Duolingo snake style)
   const getHorizontalOffset = (index: number) => {
@@ -255,6 +302,10 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
         >
           {/* Card — stop propagation so clicks inside don't close */}
           <div
+            ref={cardRef}
+            role="dialog"
+            aria-modal={true}
+            aria-labelledby="lesson-modal-title"
             onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: '404px',
@@ -269,6 +320,8 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
           >
             {/* Close button */}
             <button
+              ref={closeBtnRef}
+              aria-label="Cerrar"
               onClick={handleClose}
               style={{
                 position: 'absolute',
@@ -326,6 +379,7 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
 
             {/* Title */}
             <h4
+              id="lesson-modal-title"
               style={{
                 fontSize: '21px',
                 fontWeight: 900,

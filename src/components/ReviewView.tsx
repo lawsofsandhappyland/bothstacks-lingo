@@ -1,4 +1,5 @@
 import type { ReviewItem, LessonDue } from '../lib/review';
+import { plural } from '../lib/format';
 
 interface ReviewViewProps {
   dueItems: ReviewItem[];
@@ -48,7 +49,7 @@ export default function ReviewView({ dueItems, perLesson, totalDue, noLives = fa
                 marginBottom: 8,
               }}
             >
-              {totalDue} palabra(s) se están enfriando —{' '}
+              {plural(totalDue, 'palabra se está enfriando', 'palabras se están enfriando')} —{' '}
               <span style={{ color: 'var(--color-flame-orange)' }}>repásalas antes de olvidarlas.</span>
             </h2>
           ) : (
@@ -173,7 +174,7 @@ export default function ReviewView({ dueItems, perLesson, totalDue, noLives = fa
                         <span style={{ fontWeight: 400, color: 'var(--color-muted)' }}>— {item.translation}</span>
                       </p>
                       <p style={{ fontSize: 11, color: 'var(--color-muted-2)', marginTop: 2 }}>
-                        practicado hace {item.lastPracticedDaysAgo} día(s)
+                        practicado hace {plural(item.lastPracticedDaysAgo, 'día', 'días')}
                       </p>
                     </div>
                     <div style={{ flex: '0 0 auto', textAlign: 'right', minWidth: 110 }}>
@@ -267,7 +268,7 @@ export default function ReviewView({ dueItems, perLesson, totalDue, noLives = fa
                           color: 'var(--color-flame-orange)',
                         }}
                       >
-                        {lesson.dueCount} pendiente(s)
+                        {plural(lesson.dueCount, 'pendiente', 'pendientes')}
                       </span>
                     )}
                   </div>
