@@ -28,6 +28,7 @@ export default function SettingsView({
   resetStats
 }: SettingsViewProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [muted, setMuted] = useState(() => soundEffects.isMuted());
 
   return (
     <div className="animate-fade-in-up w-full max-w-lg px-4 py-8 mx-auto">
@@ -94,6 +95,24 @@ export default function SettingsView({
               <span className="ui-label text-xs text-slate-grey">Lives</span>
               <span className="font-mono font-black text-lg block text-electric-blue">{stats.lives}/5</span>
             </div>
+          </div>
+        </div>
+
+        <hr className="border-void border-2" />
+
+        {/* Preferences */}
+        <div className="flex flex-col gap-3">
+          <h3 className="ui-label text-electric-blue">Preferences</h3>
+          <div className="flex items-center justify-between">
+            <span className="ui-label text-ghost-white">Sound Effects</span>
+            <button
+              aria-label="Toggle sound effects"
+              aria-pressed={!muted}
+              onClick={() => { const next = !muted; soundEffects.setMuted(next); setMuted(next); }}
+              className="pill-button bg-void border-2 border-fuchsia-accent text-ghost-white hover:bg-fuchsia-accent min-w-[64px]"
+            >
+              {muted ? '🔇' : '🔊'}
+            </button>
           </div>
         </div>
 

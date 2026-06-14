@@ -272,30 +272,35 @@ export default function App() {
           <button
             onClick={() => handleNavClick('path')}
             className={`nav-pill ${view === 'path' ? 'active' : ''}`}
+            aria-label="Path"
           >
             🗺️ <span className="hidden sm:inline">Path</span>
           </button>
           <button
             onClick={() => handleNavClick('tutor')}
             className={`nav-pill ${view === 'tutor' ? 'active' : ''}`}
+            aria-label="Tutor"
           >
             🐧 <span className="hidden sm:inline">Tutor</span>
           </button>
           <button
             onClick={() => handleNavClick('achievements')}
             className={`nav-pill ${view === 'achievements' ? 'active' : ''}`}
+            aria-label="Achievements"
           >
             🏆 <span className="hidden sm:inline">Logros</span>
           </button>
           <button
             onClick={() => handleNavClick('progress')}
             className={`nav-pill ${view === 'progress' ? 'active' : ''}`}
+            aria-label="Progress"
           >
             📊 <span className="hidden sm:inline">Progreso</span>
           </button>
           <button
             onClick={() => handleNavClick('settings')}
             className={`nav-pill ${view === 'settings' ? 'active' : ''}`}
+            aria-label="Settings"
           >
             ⚙️ <span className="hidden sm:inline">Ajustes</span>
           </button>

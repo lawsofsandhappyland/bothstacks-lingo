@@ -1,6 +1,8 @@
 // Web Audio API Synthesizer for BothLingo
 // Generates cute, retro 8-bit game sound effects entirely in code.
 
+let muted = (() => { try { return localStorage.getItem('bothlingo_muted') === 'true'; } catch { return false; } })();
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext {
@@ -70,6 +72,7 @@ export const soundEffects = {
    * Plays on button or word bank selection; a short, satisfying retro click.
    */
   playTap: () => {
+    if (muted) return;
     try {
       const ctx = getAudioContext();
       const osc = ctx.createOscillator();
@@ -96,6 +99,7 @@ export const soundEffects = {
    * Plays on correct answer; bright, cheerful high-pitched double-tone arpeggio.
    */
   playCorrect: () => {
+    if (muted) return;
     try {
       const ctx = getAudioContext();
       const now = ctx.currentTime;
@@ -132,6 +136,7 @@ export const soundEffects = {
    * Plays on incorrect answer; a classic disappointed 8-bit buzz.
    */
   playIncorrect: () => {
+    if (muted) return;
     // Low triangle-to-saw descending buzz
     playBeep(220, 'sawtooth', 0.25, 0.12, 110, 0.22);
   },
@@ -140,6 +145,7 @@ export const soundEffects = {
    * Plays on lesson completion; a beautiful cascading high-energy arpeggio.
    */
   playLevelUp: () => {
+    if (muted) return;
     try {
       const ctx = getAudioContext();
       const now = ctx.currentTime;
@@ -171,6 +177,16 @@ export const soundEffects = {
    * Plays when a heart/life is lost; a sad falling sliding buzz.
    */
   playHeartLost: () => {
+    if (muted) return;
     playBeep(330, 'triangle', 0.4, 0.15, 140, 0.35);
+  },
+
+  setMuted(value: boolean) {
+    muted = value;
+    try { localStorage.setItem('bothlingo_muted', value ? 'true' : 'false'); } catch { /* ignore */ }
+  },
+
+  isMuted() {
+    return muted;
   }
 };

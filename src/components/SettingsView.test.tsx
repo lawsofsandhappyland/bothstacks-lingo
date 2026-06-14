@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsView from './SettingsView';
+import { soundEffects } from '../lib/audio';
 
 // Mock audio
 vi.mock('../lib/audio', () => ({
@@ -11,6 +12,8 @@ vi.mock('../lib/audio', () => ({
     playIncorrect: vi.fn(),
     playHeartLost: vi.fn(),
     playLevelUp: vi.fn(),
+    setMuted: vi.fn(),
+    isMuted: vi.fn(() => false),
   },
 }));
 
@@ -80,5 +83,18 @@ describe('SettingsView — reset stats', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Keep my stats' }));
     expect(reset).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
+  });
+});
+
+describe('SettingsView — sound effects toggle', () => {
+  it('renders the Sound Effects toggle button', () => {
+    render(<SettingsView {...defaultProps} />);
+    expect(screen.getByRole('button', { name: 'Toggle sound effects' })).toBeDefined();
+  });
+
+  it('clicking the toggle calls soundEffects.setMuted', async () => {
+    render(<SettingsView {...defaultProps} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Toggle sound effects' }));
+    expect(vi.mocked(soundEffects.setMuted)).toHaveBeenCalledTimes(1);
   });
 });
