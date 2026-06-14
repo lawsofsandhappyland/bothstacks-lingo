@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap');
 @import "tailwindcss";
 
 /* BothLingo Brand Design System & Core Typography */
 
-:root {
+@theme {
   --color-void: #0D0A14;
   --color-deep-violet: #1A0E2E;
   --color-electric-blue: #3B82F6;
@@ -12,7 +12,25 @@
   --color-flame-orange: #FF8C42;
   --color-ghost-white: #F1F0F3;
   --color-slate-grey: #9CA3AF;
-  
+  /* facelift additions */
+  --color-card-surface: #1C1030;
+  --color-card-alt: #160C26;
+  --color-card-tile: #140C22;
+  --color-raised-edge: #2E1C46;
+  --color-raised-edge-2: #2A1840;
+  --color-raised-edge-3: #241733;
+  --color-hard-shadow: #0A0612;
+  --color-success-green: #4ADE80;
+  --color-info-blue: #7CA0E8;
+  --color-info-panel: #13111F;
+  --color-info-border: #2A3656;
+  --color-body-lifted: #B8B3C6;
+  --color-body-lifted-2: #CFC9DC;
+  --color-muted: #8E88A0;
+  --color-muted-2: #6F6883;
+  --color-text-soft: #E7E3F0;
+  --color-orange-shadow: #A8551C;
+  --color-node-locked: #1A1228;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
@@ -262,6 +280,33 @@ html, body {
 .delay-2 { animation-delay: 0.16s; }
 .delay-3 { animation-delay: 0.24s; }
 .delay-4 { animation-delay: 0.32s; }
+.delay-5 { animation-delay: 0.40s; }
+
+/* ---- Facelift Motion System ---- */
+
+@keyframes ring {
+  0% { transform: scale(0.7); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+@keyframes bar {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-ring { animation: ring 1.8s ease-out infinite; }
+.animate-bar { animation: bar 0.7s ease-in-out infinite; transform-origin: center; }
+.animate-fade-up { animation: fadeUp 0.28s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* ---- Facelift Arcade Card Components ---- */
+
+.arcade-card { background-color: var(--color-card-surface); border: 1px solid var(--color-raised-edge); border-radius: 20px; box-shadow: 0 6px 0 0 var(--color-hard-shadow); }
+.arcade-card-hero { border-radius: 20px; box-shadow: 0 8px 0 0 var(--color-hard-shadow), 0 18px 36px rgba(0,0,0,0.45); }
 
 /* ---- Path & Node Design ---- */
 .path-container {
