@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
-import { extname, join, normalize } from 'node:path';
+import { basename, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
 
@@ -27,7 +27,8 @@ const mimeTypes = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
-  '.webp': 'image/webp'
+  '.webp': 'image/webp',
+  '.webmanifest': 'application/manifest+json; charset=utf-8'
 };
 
 function sendJson(response, statusCode, payload) {
@@ -233,12 +234,18 @@ async function serveStatic(request, response) {
   const candidatePath = join(distDir, normalizedPath === '/' ? 'index.html' : normalizedPath);
   const filePath = existsSync(candidatePath) ? candidatePath : join(distDir, 'index.html');
   const extension = extname(filePath);
+  const fileName = basename(filePath);
+  // The service worker and manifest must not be long-cached, or clients can get
+  // stuck on a stale worker / install metadata after a deploy.
+  const revalidate = fileName === 'sw.js' || fileName === 'manifest.webmanifest';
 
   try {
     await readFile(filePath);
     response.writeHead(200, {
       'Content-Type': mimeTypes[extension] || 'application/octet-stream',
-      'Cache-Control': extension === '.html' ? 'no-store' : 'public, max-age=31536000, immutable'
+      'Cache-Control': revalidate
+        ? 'no-cache'
+        : extension === '.html' ? 'no-store' : 'public, max-age=31536000, immutable'
     });
     createReadStream(filePath).pipe(response);
   } catch {

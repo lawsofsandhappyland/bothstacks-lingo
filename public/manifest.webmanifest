@@ -1,0 +1,15 @@
+{
+  "name": "BothLingo — Spanish Tech & Pancake Tutor",
+  "short_name": "BothLingo",
+  "description": "Learn conversational Spanish for full-stack engineering and cloud architecture with the BothStacks retro penguin tutor.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0D0A14",
+  "theme_color": "#0D0A14",
+  "icons": [
+    { "src": "/logomark.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
