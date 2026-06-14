@@ -5,6 +5,11 @@ import { basename, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
 
+/**
+ * BothStacks Lingo production server. Serves built dist/ static files via Content-Type routing,
+ * proxies Gemini Live API tokens, and provides a tutor endpoint for Spanish learning interactions.
+ */
+
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const rootDir = normalize(join(__dirname, '..'));
 const distDir = join(rootDir, 'dist');
@@ -31,6 +36,9 @@ const mimeTypes = {
   '.webmanifest': 'application/manifest+json; charset=utf-8'
 };
 
+/**
+ * Send a JSON response with the given status code and payload.
+ */
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -39,6 +47,9 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+/**
+ * Parse the request body as JSON, enforcing a maximum size limit of 64KB.
+ */
 function readRequestJson(request) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -63,6 +74,9 @@ function readRequestJson(request) {
   });
 }
 
+/**
+ * Build a system prompt for the tutor endpoint, including conversation history and learner message.
+ */
 function buildTutorPrompt({ userText, messages }) {
   const recentConversation = messages
     .map(message => `${message.sender === 'user' ? 'Learner' : 'Tutor'}: ${message.text}`)
@@ -87,6 +101,9 @@ Latest learner message:
 ${userText}`;
 }
 
+/**
+ * Build a system instruction for the Gemini Live voice API endpoint.
+ */
 function buildLiveSystemInstruction() {
   return `You are El Pinguino, the BothStacks Spanish speaking coach.
 This is a live voice conversation. Help the learner practice Spanish out loud.
@@ -100,6 +117,9 @@ Rules:
 - Do not ask for secrets or API keys.`;
 }
 
+/**
+ * Parse tutor response text as JSON with fallback for malformed output.
+ */
 function parseTutorText(rawText) {
   try {
     const parsed = JSON.parse(rawText);
@@ -117,6 +137,9 @@ function parseTutorText(rawText) {
   }
 }
 
+/**
+ * Handle POST /api/tutor requests, generating Spanish tutor responses via Gemini API.
+ */
 async function handleTutor(request, response) {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -181,6 +204,9 @@ async function handleTutor(request, response) {
   sendJson(response, 200, parsed);
 }
 
+/**
+ * Handle POST /api/live-token requests, creating and returning a Gemini Live API session token.
+ */
 async function handleLiveToken(_request, response) {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -227,6 +253,9 @@ async function handleLiveToken(_request, response) {
   });
 }
 
+/**
+ * Serve static files from the dist/ directory with appropriate Cache-Control headers.
+ */
 async function serveStatic(request, response) {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   const pathname = decodeURIComponent(requestUrl.pathname);
