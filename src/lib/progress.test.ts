@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats } from './progress';
+import { DEFAULT_STATS, DAILY_XP_GOAL, computeLessonCompletion, dailyGoalProgress, loseLife, resetStats } from './progress';
 import type { UserStats } from '../types';
 
 describe('computeLessonCompletion', () => {
@@ -148,5 +148,64 @@ describe('resetStats', () => {
 
   it('(k) returns a fresh object, not DEFAULT_STATS reference', () => {
     expect(resetStats()).not.toBe(DEFAULT_STATS);
+  });
+});
+
+describe('daily XP tracking in computeLessonCompletion', () => {
+  const now = new Date(2026, 5, 14, 12, 0, 0);
+  const todayStr = now.toDateString();
+
+  it('(x1) first lesson today (dailyXpDate null): dailyXp === xpReward, dailyXpDate === todayStr', () => {
+    const base: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null, dailyXp: 0, dailyXpDate: null };
+    const result = computeLessonCompletion(base, [], 20, 20, now);
+    expect(result.stats.dailyXp).toBe(20);
+    expect(result.stats.dailyXpDate).toBe(todayStr);
+  });
+
+  it('(x2) second lesson same day: dailyXp accumulates', () => {
+    const base: UserStats = { xp: 20, streak: 1, lives: 5, lastActiveDate: todayStr, dailyXp: 20, dailyXpDate: todayStr };
+    const result = computeLessonCompletion(base, [], 21, 20, now);
+    expect(result.stats.dailyXp).toBe(40);
+  });
+
+  it('(x3) already-completed lesson same day: dailyXp unchanged (earnedXp 0)', () => {
+    const base: UserStats = { xp: 20, streak: 1, lives: 5, lastActiveDate: todayStr, dailyXp: 20, dailyXpDate: todayStr };
+    const result = computeLessonCompletion(base, [22], 22, 20, now);
+    expect(result.stats.dailyXp).toBe(20);
+  });
+
+  it('(x4) new day: dailyXp resets to xpReward (previous day dailyXp is discarded)', () => {
+    const yesterday = new Date(2026, 5, 13, 12, 0, 0).toDateString();
+    const base: UserStats = { xp: 50, streak: 5, lives: 5, lastActiveDate: yesterday, dailyXp: 50, dailyXpDate: yesterday };
+    const result = computeLessonCompletion(base, [], 23, 20, now);
+    expect(result.stats.dailyXp).toBe(20);
+    expect(result.stats.dailyXpDate).toBe(todayStr);
+  });
+});
+
+describe('dailyGoalProgress', () => {
+  const now = new Date(2026, 5, 14, 12, 0, 0);
+  const todayStr = now.toDateString();
+
+  it('returns earned XP for today', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null, dailyXp: 20, dailyXpDate: todayStr };
+    const result = dailyGoalProgress(stats, now);
+    expect(result.earned).toBe(20);
+    expect(result.goal).toBe(DAILY_XP_GOAL);
+    expect(result.met).toBe(false);
+  });
+
+  it('returns earned 0 when dailyXpDate is a previous day', () => {
+    const yesterday = new Date(2026, 5, 13, 12, 0, 0).toDateString();
+    const stats: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null, dailyXp: 50, dailyXpDate: yesterday };
+    const result = dailyGoalProgress(stats, now);
+    expect(result.earned).toBe(0);
+    expect(result.met).toBe(false);
+  });
+
+  it('met is true when earned >= DAILY_XP_GOAL', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null, dailyXp: 30, dailyXpDate: todayStr };
+    const result = dailyGoalProgress(stats, now);
+    expect(result.met).toBe(true);
   });
 });

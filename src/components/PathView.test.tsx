@@ -174,3 +174,19 @@ describe('PathView — locked lesson', () => {
     expect(screen.queryByText('Learn Spanish words for family members.')).toBeNull();
   });
 });
+
+describe('PathView — daily goal', () => {
+  it('shows daily goal progress and progressbar when dailyXp is set for today', () => {
+    const todayStr = new Date().toDateString();
+    render(
+      <PathView
+        lessons={lessons}
+        stats={{ ...defaultStats, dailyXp: 20, dailyXpDate: todayStr }}
+        completedLessons={[]}
+        onStartLesson={vi.fn()}
+      />
+    );
+    expect(screen.getByText('20/30 XP')).toBeDefined();
+    expect(screen.getByRole('progressbar')).toBeDefined();
+  });
+});

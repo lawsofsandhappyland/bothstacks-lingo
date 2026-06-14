@@ -9,6 +9,10 @@ export interface UserStats {
   lastActiveDate: string | null;
   /** Number of streak freezes the user holds; a freeze bridges a missed day so the streak is not lost. Optional for backward compatibility. */
   streakFreezes?: number;
+  /** XP earned so far on dailyXpDate, toward the daily goal. Optional for backward compatibility. */
+  dailyXp?: number;
+  /** toDateString() of the day dailyXp applies to; used to reset the daily goal at midnight. */
+  dailyXpDate?: string | null;
 }
 
 export type AchievementKind = 'xp' | 'streak' | 'lessons';

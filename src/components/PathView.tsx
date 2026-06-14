@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Lesson, UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
+import DailyGoal from './DailyGoal';
 
 /**
  * Props for the PathView component.
@@ -67,6 +68,7 @@ export default function PathView({ lessons, stats, completedLessons, onStartLess
           <span className="font-mono text-sm font-black">{completedLessons.length} / {lessons.length} Lessons</span>
         </div>
       </div>
+      <DailyGoal stats={stats} />
 
       {/* Path Line and Staggered Nodes */}
       <div className="path-container mt-6 w-full relative">

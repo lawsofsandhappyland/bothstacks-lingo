@@ -1,11 +1,15 @@
 import type { UserStats } from '../types';
 
+export const DAILY_XP_GOAL = 30;
+
 export const DEFAULT_STATS: UserStats = {
   xp: 0,
   streak: 0,
   lives: 5,
   lastActiveDate: null,
-  streakFreezes: 0
+  streakFreezes: 0,
+  dailyXp: 0,
+  dailyXpDate: null
 };
 
 export function resetStats(): UserStats {
@@ -55,6 +59,14 @@ export function computeLessonCompletion(
     }
   }
   if (earnedConsecutiveDay && newStreak % 7 === 0) { newFreezes = Math.min(3, newFreezes + 1); }
-  const updatedStats: UserStats = { ...stats, xp: wasAlreadyCompleted ? stats.xp : stats.xp + xpReward, streak: newStreak, lives: stats.lives, lastActiveDate: todayStr, streakFreezes: newFreezes };
+  const earnedXp = wasAlreadyCompleted ? 0 : xpReward;
+  const newDailyXp = stats.dailyXpDate === todayStr ? (stats.dailyXp ?? 0) + earnedXp : earnedXp;
+  const updatedStats: UserStats = { ...stats, xp: wasAlreadyCompleted ? stats.xp : stats.xp + xpReward, streak: newStreak, lives: stats.lives, lastActiveDate: todayStr, streakFreezes: newFreezes, dailyXp: newDailyXp, dailyXpDate: todayStr };
   return { stats: updatedStats, completedLessons: newCompleted };
+}
+
+export function dailyGoalProgress(stats: UserStats, now: Date = new Date()): { earned: number; goal: number; met: boolean } {
+  const today = now.toDateString();
+  const earned = stats.dailyXpDate === today ? (stats.dailyXp ?? 0) : 0;
+  return { earned, goal: DAILY_XP_GOAL, met: earned >= DAILY_XP_GOAL };
 }
