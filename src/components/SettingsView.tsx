@@ -1,6 +1,13 @@
 import type { UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
 
+/**
+ * Props for the SettingsView component.
+ * @property {UserStats} stats - Current user statistics (XP, streak, lives).
+ * @property {string} tutorModel - Currently selected Gemini model identifier.
+ * @property {(model: string) => void} setTutorModel - Callback to update the tutor model selection.
+ * @property {() => void} resetStats - Callback to reset user stats to default values.
+ */
 interface SettingsViewProps {
   stats: UserStats;
   tutorModel: string;
@@ -8,6 +15,10 @@ interface SettingsViewProps {
   resetStats: () => void;
 }
 
+/**
+ * Settings screen providing Gemini tutor model selection, a profile stats summary (XP, streak, lives),
+ * and a reset-stats danger action.
+ */
 export default function SettingsView({ 
   stats, 
   tutorModel, 

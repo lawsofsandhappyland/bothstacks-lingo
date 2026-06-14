@@ -2,6 +2,13 @@ import { useState } from 'react';
 import type { Lesson, UserStats } from '../types';
 import { soundEffects } from '../lib/audio';
 
+/**
+ * Props for the PathView component.
+ * @property {Lesson[]} lessons - Array of lessons to display in the path.
+ * @property {UserStats} stats - User statistics including lives and experience.
+ * @property {number[]} completedLessons - IDs of lessons already completed by the user.
+ * @property {(id: number) => void} onStartLesson - Callback triggered when starting a lesson.
+ */
 interface PathViewProps {
   lessons: Lesson[];
   stats: UserStats;
@@ -9,6 +16,10 @@ interface PathViewProps {
   onStartLesson: (id: number) => void;
 }
 
+/**
+ * Duolingo-style staggered lesson path where nodes unlock sequentially as previous lessons complete.
+ * Clicking an unlocked node opens a start popover; locked nodes play an error sound.
+ */
 export default function PathView({ lessons, stats, completedLessons, onStartLesson }: PathViewProps) {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
 
