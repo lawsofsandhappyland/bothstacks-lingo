@@ -34,3 +34,10 @@ adb shell monkey -p dev.bothstacks.lingo -c android.intent.category.LAUNCHER 1
 - The Gemini tutor (`/api/*`) needs the backend server; in a purely bundled
   build those calls fail gracefully. Point `capacitor.config.ts` `server.url`
   at a reachable backend for full tutor functionality on-device.
+- `capacitor.config.ts` now sets `server.url` to the live Cloud Run deployment
+  (https://bothlingo-831930974109.australia-southeast1.run.app), so the installed
+  app loads the current production site (facelift + working voice tutor) with no
+  rebuild needed for future web deploys. Note: with `server.url` set, the WebView
+  loads the remote URL and does NOT automatically fall back to the bundled `dist/`
+  when offline (you would see a load error); `cap sync` still bundles `dist/`, but
+  a true offline fallback would require configuring `server.errorPath`.
