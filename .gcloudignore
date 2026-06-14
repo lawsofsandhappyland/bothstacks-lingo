@@ -1,0 +1,17 @@
+# Upload only what the Dockerfile needs (package files, server/, dist/).
+# dist/ is git-ignored but MUST be uploaded for the build, so this file
+# (not .gitignore) governs the Cloud Build upload.
+.git
+.github
+node_modules
+android
+src
+public
+docs
+*.md
+capacitor.config.ts
+eslint.config.js
+vite.config.ts
+tsconfig*.json
+# root dev template only — must NOT match dist/index.html (the built shell)
+/index.html
