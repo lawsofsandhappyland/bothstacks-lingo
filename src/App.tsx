@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ViewType, UserStats } from './types';
+import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats } from './lib/progress';
 import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
 import { getAuthReady } from './lib/firebase';
@@ -18,13 +19,6 @@ const STORAGE_KEYS = {
 };
 
 const LEGACY_API_KEY_STORAGE_KEY = 'bothlingo_gemini_key';
-
-const DEFAULT_STATS: UserStats = {
-  xp: 0,
-  streak: 0,
-  lives: 5,
-  lastActiveDate: null
-};
 
 const DEFAULT_TUTOR_MODEL = 'gemini-2.5-flash';
 
@@ -119,10 +113,7 @@ export default function App() {
   };
 
   const handleLoseLife = () => {
-    const updatedStats = {
-      ...stats,
-      lives: Math.max(0, stats.lives - 1)
-    };
+    const updatedStats = loseLife(stats);
     setStats(updatedStats);
     syncToFirestore(updatedStats, completedLessons, tutorModel);
   };
@@ -130,40 +121,10 @@ export default function App() {
   const handleLessonComplete = (xpReward: number) => {
     if (activeLessonId === null) return;
 
-    const wasAlreadyCompleted = completedLessons.includes(activeLessonId);
-    const newCompleted = [...completedLessons];
-    if (!newCompleted.includes(activeLessonId)) {
-      newCompleted.push(activeLessonId);
-    }
-
-    const todayStr = new Date().toDateString();
-    let newStreak = stats.streak;
-
-    if (stats.lastActiveDate === null) {
-      newStreak = 1;
-    } else if (stats.lastActiveDate !== todayStr) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toDateString();
-
-      if (stats.lastActiveDate === yesterdayStr) {
-        newStreak += 1;
-      } else {
-        newStreak = 1;
-      }
-    }
-
-    const updatedStats: UserStats = {
-      ...stats,
-      xp: wasAlreadyCompleted ? stats.xp : stats.xp + xpReward,
-      streak: newStreak,
-      lives: stats.lives,
-      lastActiveDate: todayStr
-    };
-
-    setStats(updatedStats);
-    setCompletedLessons(newCompleted);
-    syncToFirestore(updatedStats, newCompleted, tutorModel);
+    const result = computeLessonCompletion(stats, completedLessons, activeLessonId, xpReward);
+    setStats(result.stats);
+    setCompletedLessons(result.completedLessons);
+    syncToFirestore(result.stats, result.completedLessons, tutorModel);
 
     setActiveLessonId(null);
     setView('path');
@@ -174,13 +135,13 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.COMPLETED);
     localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
 
-    const resetStats = { ...DEFAULT_STATS };
-    setStats(resetStats);
+    const resetStatsValue = resetStats();
+    setStats(resetStatsValue);
     setCompletedLessons([]);
     setActiveLessonId(null);
     setView('path');
 
-    syncToFirestore(resetStats, [], tutorModel);
+    syncToFirestore(resetStatsValue, [], tutorModel);
   };
 
   const handleSetTutorModel = (m: string) => {

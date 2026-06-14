@@ -62,10 +62,12 @@ function playBeep(
   }
 }
 
+/**
+ * Collection of Web Audio sound-effect players for UI feedback.
+ */
 export const soundEffects = {
   /**
-   * Sound played when the user selects a button or word bank item.
-   * A short, satisfying retro click.
+   * Plays on button or word bank selection; a short, satisfying retro click.
    */
   playTap: () => {
     try {
@@ -91,8 +93,7 @@ export const soundEffects = {
   },
 
   /**
-   * Sound played for a correct answer.
-   * Bright, cheerful high-pitched double-tone arpeggio.
+   * Plays on correct answer; bright, cheerful high-pitched double-tone arpeggio.
    */
   playCorrect: () => {
     try {
@@ -128,8 +129,7 @@ export const soundEffects = {
   },
 
   /**
-   * Sound played for an incorrect answer.
-   * A classic disappointed 8-bit buzz.
+   * Plays on incorrect answer; a classic disappointed 8-bit buzz.
    */
   playIncorrect: () => {
     // Low triangle-to-saw descending buzz
@@ -137,8 +137,7 @@ export const soundEffects = {
   },
 
   /**
-   * Sound played when the user finishes a lesson successfully.
-   * A beautiful cascading high-energy arpeggio!
+   * Plays on lesson completion; a beautiful cascading high-energy arpeggio.
    */
   playLevelUp: () => {
     try {
@@ -169,8 +168,7 @@ export const soundEffects = {
   },
 
   /**
-   * Sound played when a heart/life is lost.
-   * A sad falling sliding buzz.
+   * Plays when a heart/life is lost; a sad falling sliding buzz.
    */
   playHeartLost: () => {
     playBeep(330, 'triangle', 0.4, 0.15, 140, 0.35);
