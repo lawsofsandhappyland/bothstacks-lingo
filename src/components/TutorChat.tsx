@@ -78,19 +78,22 @@ export default function TutorChat() {
     ]);
   };
 
-  const stopSession = () => {
+  const teardownAudio = () => {
     processorRef.current?.disconnect();
     sourceRef.current?.disconnect();
     streamRef.current?.getTracks().forEach(track => track.stop());
-    socketRef.current?.close();
+    void inputContextRef.current?.close();
 
     processorRef.current = null;
     sourceRef.current = null;
     streamRef.current = null;
-    socketRef.current = null;
-
-    void inputContextRef.current?.close();
     inputContextRef.current = null;
+  };
+
+  const stopSession = () => {
+    socketRef.current?.close();
+    socketRef.current = null;
+    teardownAudio();
     setStatus('idle');
   };
 
@@ -215,11 +218,11 @@ export default function TutorChat() {
       };
 
       socket.onclose = () => {
-        if (status !== 'idle') {
-          processorRef.current?.disconnect();
-          sourceRef.current?.disconnect();
-          streamRef.current?.getTracks().forEach(track => track.stop());
-        }
+        // Ignore close events from a superseded/stopped socket so they don't
+        // tear down a newer session that reused the shared refs.
+        if (socketRef.current !== socket) return;
+        teardownAudio();
+        setStatus(prev => (prev === 'error' ? 'error' : 'idle'));
       };
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'Could not start live tutor.';
