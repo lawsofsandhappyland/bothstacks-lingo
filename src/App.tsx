@@ -7,6 +7,8 @@ import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
 import { buildReviewQueue, dueItems, perLessonDue, collectVocab, markReviewed, selectReviewBatch } from './lib/review';
 import type { ReviewLog } from './lib/review';
+import { recordActivity, dayKey } from './lib/analytics';
+import type { ActivityLog } from './lib/analytics';
 import { evaluateAchievements } from './lib/achievements';
 import { buildReviewLesson, REVIEW_SESSION_ID } from './lib/reviewSession';
 
@@ -27,6 +29,7 @@ const STORAGE_KEYS = {
   COMPLETED: 'bothlingo_completed_lessons',
   MODEL: 'bothlingo_tutor_model',
   REVIEW_LOG: 'bothlingo_review_log',
+  ACTIVITY_LOG: 'bothlingo_activity_log',
 };
 
 const LEGACY_API_KEY_STORAGE_KEY = 'bothlingo_gemini_key';
@@ -48,6 +51,19 @@ function readStoredText(key: string, fallback: string): string {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * One-time backfill for accounts that predate the activity log: they already hold
+ * XP and completed lessons but have no per-day history, which would make the
+ * Progreso dashboard read as empty. Seed a single entry dated to the last active
+ * day so existing progress is reflected. Returns the same object when no seed is
+ * needed (so callers can detect whether a persist is warranted by reference).
+ */
+function seedLegacyActivity(log: ActivityLog, stats: UserStats, completed: number[]): ActivityLog {
+  if (Object.keys(log).length > 0 || (stats.xp ?? 0) <= 0) return log;
+  const when = stats.lastActiveDate ? new Date(stats.lastActiveDate) : new Date();
+  return { [dayKey(when)]: { xp: stats.xp, sessions: Math.max(1, completed.length) } };
 }
 
 const VIEW_META: Record<Exclude<ViewType, 'lesson'>, { crumb: string; title: string }> = {
@@ -75,6 +91,7 @@ export default function App() {
   const [uid, setUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [reviewLog, setReviewLog] = useState<ReviewLog>({});
+  const [activityLog, setActivityLog] = useState<ActivityLog>({});
   const [reviewSession, setReviewSession] = useState<{ lesson: Lesson; keys: string[] } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
@@ -94,9 +111,13 @@ export default function App() {
         const regenedStored = regenerateLives(readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS), new Date());
         setStats(regenedStored);
         try { localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(regenedStored)); } catch { /* ignore */ }
-        setCompletedLessons(readStoredJson(STORAGE_KEYS.COMPLETED, []));
+        const storedCompleted = readStoredJson<number[]>(STORAGE_KEYS.COMPLETED, []);
+        setCompletedLessons(storedCompleted);
         setTutorModel(readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL));
         setReviewLog(readStoredJson<ReviewLog>(STORAGE_KEYS.REVIEW_LOG, {}));
+        const seededStored = seedLegacyActivity(readStoredJson<ActivityLog>(STORAGE_KEYS.ACTIVITY_LOG, {}), regenedStored, storedCompleted);
+        setActivityLog(seededStored);
+        try { localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOG, JSON.stringify(seededStored)); } catch { /* ignore */ }
         setLoading(false);
         return;
       }
@@ -110,14 +131,19 @@ export default function App() {
         setCompletedLessons(remote.completedLessons);
         setTutorModel(remote.tutorModel || DEFAULT_TUTOR_MODEL);
         setReviewLog(remote.reviewLog ?? {});
-        // Persist a regen change BEFORE unblocking interaction so this bootstrap
-        // write cannot race with (and clobber) a quick first user action.
-        if (regened !== remote.stats) {
+        const baseRemoteLog = remote.activityLog ?? {};
+        const seededRemoteLog = seedLegacyActivity(baseRemoteLog, regened, remote.completedLessons);
+        setActivityLog(seededRemoteLog);
+        // Persist a regen change (or a legacy activity backfill) BEFORE unblocking
+        // interaction so this bootstrap write cannot race with (and clobber) a
+        // quick first user action.
+        if (regened !== remote.stats || seededRemoteLog !== baseRemoteLog) {
           await saveUserDoc(user.uid, {
             stats: regened,
             completedLessons: remote.completedLessons,
             tutorModel: remote.tutorModel || DEFAULT_TUTOR_MODEL,
             reviewLog: remote.reviewLog ?? {},
+            activityLog: seededRemoteLog,
           }).catch(() => {});
         }
         setLoading(false);
@@ -129,12 +155,15 @@ export default function App() {
       const localCompleted = readStoredJson(STORAGE_KEYS.COMPLETED, []);
       const localModel = readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL);
       const localReviewLog = readStoredJson<ReviewLog>(STORAGE_KEYS.REVIEW_LOG, {});
+      const localActivityLog = readStoredJson<ActivityLog>(STORAGE_KEYS.ACTIVITY_LOG, {});
 
       const regenedLocal = regenerateLives(localStats, new Date());
+      const seededLocalLog = seedLegacyActivity(localActivityLog, regenedLocal, localCompleted);
       setStats(regenedLocal);
       setCompletedLessons(localCompleted);
       setTutorModel(localModel);
       setReviewLog(localReviewLog);
+      setActivityLog(seededLocalLog);
       setLoading(false);
 
       // Seed Firestore with the regenerated local data (persists the regen anchor)
@@ -143,6 +172,7 @@ export default function App() {
         completedLessons: localCompleted,
         tutorModel: localModel,
         reviewLog: localReviewLog,
+        activityLog: seededLocalLog,
       }).catch(() => {});
 
       // Clear localStorage after migration
@@ -150,6 +180,7 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEYS.COMPLETED);
       localStorage.removeItem(STORAGE_KEYS.MODEL);
       localStorage.removeItem(STORAGE_KEYS.REVIEW_LOG);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVITY_LOG);
     });
   }, []);
 
@@ -167,12 +198,13 @@ export default function App() {
   }, [view]);
 
   // Persist state to Firestore on change
-  const syncToFirestore = (newStats: UserStats, newCompleted: number[], newModel: string, newReviewLog: ReviewLog) => {
+  const syncToFirestore = (newStats: UserStats, newCompleted: number[], newModel: string, newReviewLog: ReviewLog, newActivityLog: ActivityLog) => {
     if (!uid) {
       localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
       localStorage.setItem(STORAGE_KEYS.COMPLETED, JSON.stringify(newCompleted));
       localStorage.setItem(STORAGE_KEYS.MODEL, newModel);
       localStorage.setItem(STORAGE_KEYS.REVIEW_LOG, JSON.stringify(newReviewLog));
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOG, JSON.stringify(newActivityLog));
       return;
     }
     saveUserDoc(uid, {
@@ -180,13 +212,14 @@ export default function App() {
       completedLessons: newCompleted,
       tutorModel: newModel,
       reviewLog: newReviewLog,
+      activityLog: newActivityLog,
     }).catch((err) => console.error('Firestore save failed', err));
   };
 
   const handleLoseLife = () => {
     const updatedStats = loseLife(stats);
     setStats(updatedStats);
-    syncToFirestore(updatedStats, completedLessons, tutorModel, reviewLog);
+    syncToFirestore(updatedStats, completedLessons, tutorModel, reviewLog, activityLog);
   };
 
   const handleLessonComplete = (xpReward: number) => {
@@ -201,7 +234,11 @@ export default function App() {
     const newLog = markReviewed(reviewLog, keys);
     setReviewLog(newLog);
 
-    syncToFirestore(result.stats, result.completedLessons, tutorModel, newLog);
+    const earned = result.stats.xp - stats.xp;
+    const newActivity = recordActivity(activityLog, earned, new Date());
+    setActivityLog(newActivity);
+
+    syncToFirestore(result.stats, result.completedLessons, tutorModel, newLog, newActivity);
 
     setActiveLessonId(null);
     setView('path');
@@ -212,21 +249,24 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.COMPLETED);
     localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEYS.REVIEW_LOG);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVITY_LOG);
 
     const resetStatsValue = resetStats();
     const emptyLog: ReviewLog = {};
+    const emptyActivity: ActivityLog = {};
     setStats(resetStatsValue);
     setCompletedLessons([]);
     setActiveLessonId(null);
     setReviewLog(emptyLog);
+    setActivityLog(emptyActivity);
     setView('path');
 
-    syncToFirestore(resetStatsValue, [], tutorModel, emptyLog);
+    syncToFirestore(resetStatsValue, [], tutorModel, emptyLog, emptyActivity);
   };
 
   const handleSetTutorModel = (m: string) => {
     setTutorModel(m);
-    syncToFirestore(stats, completedLessons, m, reviewLog);
+    syncToFirestore(stats, completedLessons, m, reviewLog, activityLog);
   };
 
   const completeOnboarding = () => {
@@ -272,7 +312,10 @@ export default function App() {
     setCompletedLessons(cleaned);
     const newLog = markReviewed(reviewLog, reviewSession?.keys ?? []);
     setReviewLog(newLog);
-    syncToFirestore(result.stats, cleaned, tutorModel, newLog);
+    const earned = result.stats.xp - stats.xp;
+    const newActivity = recordActivity(activityLog, earned, new Date());
+    setActivityLog(newActivity);
+    syncToFirestore(result.stats, cleaned, tutorModel, newLog, newActivity);
     setReviewSession(null);
     setView('repaso');
   };
@@ -623,7 +666,7 @@ export default function App() {
               ) : view === 'achievements' ? (
                 <AchievementsView stats={stats} completedLessons={completedLessons} />
               ) : view === 'progress' ? (
-                <ProgressView stats={stats} completedLessons={completedLessons} />
+                <ProgressView stats={stats} completedLessons={completedLessons} reviewLog={reviewLog} activityLog={activityLog} />
               ) : (
                 <SettingsView
                   stats={stats}
