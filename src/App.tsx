@@ -7,6 +7,7 @@ import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
 
 import Onboarding from './components/Onboarding';
+import OfflineBanner from './components/OfflineBanner';
 
 // Lazy-loaded route views (code-split into separate chunks)
 const PathView = lazy(() => import('./components/PathView'));
@@ -218,6 +219,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-void text-ghost-white flex flex-col font-sans pb-28">
+      <OfflineBanner />
       {!loading && showOnboarding && <Onboarding onComplete={completeOnboarding} />}
       {view !== 'lesson' && (
         <header className="sticky top-0 bg-void/90 backdrop-blur-md border-b-3 border-void py-3.5 px-4 z-40 transition-all">
