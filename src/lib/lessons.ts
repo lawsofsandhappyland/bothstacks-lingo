@@ -273,5 +273,167 @@ export const lessonsData: Lesson[] = [
         correctWordOrder: ["Yo", "hablo", "español", "con", "mi", "tutor", "de", "software."]
       }
     ]
+  },
+  {
+    id: 6,
+    title: "La Nube",
+    subtitle: "Cloud & Servers",
+    description: "Take your Spanish to the cloud with servers, data, and networks.",
+    xpReward: 45,
+    icon: "☁️",
+    exercises: [
+      {
+        id: "l6-q1",
+        type: "multiple-choice",
+        instruction: "Select the correct Spanish translation:",
+        questionText: "The server is in the cloud.",
+        options: [
+          "El servidor está en la nube.",
+          "El café está frío.",
+          "Yo despliego la aplicación."
+        ],
+        correctAnswer: "El servidor está en la nube."
+      },
+      {
+        id: "l6-q2",
+        type: "matching",
+        instruction: "Match the cloud terms with their English translations:",
+        questionText: "Match the pairs",
+        leftPairs: ["la nube", "el servidor", "los datos", "la red", "el archivo"],
+        rightPairs: ["the network", "the cloud", "the file", "the server", "the data"],
+        matchingMap: {
+          "la nube": "the cloud",
+          "el servidor": "the server",
+          "los datos": "the data",
+          "la red": "the network",
+          "el archivo": "the file"
+        }
+      },
+      {
+        id: "l6-q3",
+        type: "fill-blank",
+        instruction: "Select the missing word:",
+        questionText: "Guardo mis _______ en la nube.",
+        options: ["datos", "panqueques", "gato"],
+        correctAnswer: "datos"
+      },
+      {
+        id: "l6-q4",
+        type: "word-bank",
+        instruction: "Translate this sentence to Spanish by tapping the word pills:",
+        questionText: "The cloud is very fast.",
+        englishPhrase: "La nube es muy rápida.",
+        wordBank: ["La", "nube", "es", "muy", "rápida", "lenta", "servidor"],
+        correctWordOrder: ["La", "nube", "es", "muy", "rápida."]
+      }
+    ]
+  },
+  {
+    id: 7,
+    title: "Depurando",
+    subtitle: "Bugs & Fixes",
+    description: "Find and fix bugs, the Spanish way. Errors, tests, and code.",
+    xpReward: 50,
+    icon: "🐛",
+    exercises: [
+      {
+        id: "l7-q1",
+        type: "multiple-choice",
+        instruction: "Select the correct Spanish translation:",
+        questionText: "There is an error in the code.",
+        options: [
+          "Hay un error en el código.",
+          "Me gusta el café.",
+          "La nube es rápida."
+        ],
+        correctAnswer: "Hay un error en el código."
+      },
+      {
+        id: "l7-q2",
+        type: "matching",
+        instruction: "Match the debugging terms with their English translations:",
+        questionText: "Match the pairs",
+        leftPairs: ["el error", "el código", "la prueba", "arreglar", "el fallo"],
+        rightPairs: ["the test", "the bug", "to fix", "the error", "the code"],
+        matchingMap: {
+          "el error": "the error",
+          "el código": "the code",
+          "la prueba": "the test",
+          "arreglar": "to fix",
+          "el fallo": "the bug"
+        }
+      },
+      {
+        id: "l7-q3",
+        type: "fill-blank",
+        instruction: "Select the missing word:",
+        questionText: "Necesito _______ este error.",
+        options: ["arreglar", "comer", "dormir"],
+        correctAnswer: "arreglar"
+      },
+      {
+        id: "l7-q4",
+        type: "word-bank",
+        instruction: "Translate this sentence to Spanish by tapping the word pills:",
+        questionText: "The code does not work.",
+        englishPhrase: "El código no funciona.",
+        wordBank: ["El", "código", "no", "funciona", "sí", "error"],
+        correctWordOrder: ["El", "código", "no", "funciona."]
+      }
+    ]
+  },
+  {
+    id: 8,
+    title: "El Despliegue",
+    subtitle: "Ship It!",
+    description: "Ship your code in Spanish: deploy, versions, and the big green button.",
+    xpReward: 55,
+    icon: "🚀",
+    exercises: [
+      {
+        id: "l8-q1",
+        type: "multiple-choice",
+        instruction: "Select the correct Spanish translation:",
+        questionText: "We deploy the application today.",
+        options: [
+          "Desplegamos la aplicación hoy.",
+          "El gato bebe leche.",
+          "Hay un error."
+        ],
+        correctAnswer: "Desplegamos la aplicación hoy."
+      },
+      {
+        id: "l8-q2",
+        type: "matching",
+        instruction: "Match the deployment terms with their English translations:",
+        questionText: "Match the pairs",
+        leftPairs: ["desplegar", "la aplicación", "la versión", "listo", "el botón"],
+        rightPairs: ["ready", "the version", "to deploy", "the button", "the application"],
+        matchingMap: {
+          "desplegar": "to deploy",
+          "la aplicación": "the application",
+          "la versión": "the version",
+          "listo": "ready",
+          "el botón": "the button"
+        }
+      },
+      {
+        id: "l8-q3",
+        type: "fill-blank",
+        instruction: "Select the missing word:",
+        questionText: "La nueva _______ está lista.",
+        options: ["versión", "taza", "silla"],
+        correctAnswer: "versión"
+      },
+      {
+        id: "l8-q4",
+        type: "word-bank",
+        instruction: "Translate this sentence to Spanish by tapping the word pills:",
+        questionText: "We deploy the new version.",
+        englishPhrase: "Desplegamos la nueva versión.",
+        wordBank: ["Desplegamos", "la", "nueva", "versión", "viejo", "código"],
+        correctWordOrder: ["Desplegamos", "la", "nueva", "versión."]
+      }
+    ]
   }
 ];
