@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Capacitor native project (regenerate with: npx cap add android && npx cap sync)
+android
+ios
+
 # Firebase
 .firebase/
 .firebaserc
