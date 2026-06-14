@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ViewType, UserStats } from './types';
 import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats, regenerateLives } from './lib/progress';
 import { lessonsData } from './lib/lessons';
@@ -52,6 +52,7 @@ function readStoredText(key: string, fallback: string): string {
  */
 export default function App() {
   const [view, setView] = useState<ViewType>('path');
+  const mainRef = useRef<HTMLElement>(null);
   const [stats, setStats] = useState<UserStats>(DEFAULT_STATS);
   const [completedLessons, setCompletedLessons] = useState<number[]>([]);
   const [activeLessonId, setActiveLessonId] = useState<number | null>(null);
@@ -136,6 +137,11 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Move focus to main content region on view change for keyboard/screen-reader users
+  useEffect(() => {
+    mainRef.current?.focus({ preventScroll: true });
+  }, [view]);
+
   // Persist state to Firestore on change
   const syncToFirestore = (newStats: UserStats, newCompleted: number[], newModel: string) => {
     if (!uid) {
@@ -219,6 +225,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-void text-ghost-white flex flex-col font-sans pb-28">
+      <a href="#main-content" className="sr-only-focusable">Skip to content</a>
       <OfflineBanner />
       {!loading && showOnboarding && <Onboarding onComplete={completeOnboarding} />}
       {view !== 'lesson' && (
@@ -256,7 +263,7 @@ export default function App() {
         </header>
       )}
 
-      <main className="flex-grow flex items-center justify-center">
+      <main ref={mainRef} id="main-content" tabIndex={-1} className="flex-grow flex items-center justify-center">
         <Suspense fallback={<div className="flex-grow flex items-center justify-center"><p className="ui-label text-slate-grey text-sm tracking-widest">CARGANDO...</p></div>}>
           {view === 'lesson' && activeLesson ? (
             <LessonRunner

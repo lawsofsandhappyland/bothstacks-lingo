@@ -123,6 +123,21 @@ describe('App', () => {
     expect(screen.getByText(onboardingSlides[0].title)).toBeTruthy();
   });
 
+  it('renders a skip link and a main region with id main-content', async () => {
+    vi.mocked(getAuthReady).mockResolvedValue({ uid: 'u1' } as never);
+    vi.mocked(loadUserDoc).mockResolvedValue({
+      stats: { xp: 0, streak: 0, lives: 5, lastActiveDate: null },
+      completedLessons: [],
+      tutorModel: 'gemini-2.5-flash',
+    } as never);
+
+    render(<App />);
+    await screen.findByTestId('path-view');
+
+    expect(screen.getByText('Skip to content')).toBeTruthy();
+    expect(document.getElementById('main-content')).not.toBeNull();
+  });
+
   it('regenerates lives from an old livesUpdatedAt on load', async () => {
     const oldAnchor = Date.now() - 5 * LIFE_REGEN_MS;
 
