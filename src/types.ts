@@ -1,12 +1,23 @@
 // BothLingo Core Type Definitions
 
-export type ViewType = 'path' | 'lesson' | 'tutor' | 'settings';
+export type ViewType = 'path' | 'lesson' | 'tutor' | 'settings' | 'achievements';
 
 export interface UserStats {
   xp: number;
   streak: number;
   lives: number;
   lastActiveDate: string | null;
+}
+
+export type AchievementKind = 'xp' | 'streak' | 'lessons';
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  kind: AchievementKind;
+  threshold: number;
 }
 
 export type ExerciseType = 'multiple-choice' | 'matching' | 'word-bank' | 'fill-blank';

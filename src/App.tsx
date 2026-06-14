@@ -11,6 +11,7 @@ import PathView from './components/PathView';
 import LessonRunner from './components/LessonRunner';
 import TutorChat from './components/TutorChat';
 import SettingsView from './components/SettingsView';
+import AchievementsView from './components/AchievementsView';
 
 const STORAGE_KEYS = {
   STATS: 'bothlingo_stats',
@@ -222,6 +223,8 @@ export default function App() {
           />
         ) : view === 'tutor' ? (
           <TutorChat />
+        ) : view === 'achievements' ? (
+          <AchievementsView stats={stats} completedLessons={completedLessons} />
         ) : (
           <SettingsView
             stats={stats}
@@ -245,6 +248,12 @@ export default function App() {
             className={`nav-pill ${view === 'tutor' ? 'active' : ''}`}
           >
             🐧 <span className="hidden sm:inline">Tutor</span>
+          </button>
+          <button
+            onClick={() => handleNavClick('achievements')}
+            className={`nav-pill ${view === 'achievements' ? 'active' : ''}`}
+          >
+            🏆 <span className="hidden sm:inline">Logros</span>
           </button>
           <button
             onClick={() => handleNavClick('settings')}
