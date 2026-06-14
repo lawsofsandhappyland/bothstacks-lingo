@@ -620,6 +620,25 @@ html, body {
   .bl-header-brand {
     display: flex !important;
   }
+  /* On phones Ajustes lives behind the header gear, so drop it from the
+     bottom tab bar (keeps 5 tabs that fit without horizontal scroll). */
+  .bl-navbtn-desktop-only {
+    display: none !important;
+  }
+  .bl-header-gear {
+    display: inline-flex !important;
+  }
+  /* On phones the brand logo identifies the app; the screen is named by the
+     active tab + hero, so drop the crumb/title to avoid a cramped, wrapping
+     header. */
+  .bl-header-titles {
+    display: none;
+  }
+}
+
+/* The header gear is mobile-only; the desktop sidebar carries Ajustes instead. */
+.bl-header-gear {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

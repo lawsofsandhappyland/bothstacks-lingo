@@ -474,7 +474,7 @@ export default function App() {
                 Both<span style={{ color: 'var(--color-flame-orange)' }}>Lingo</span>
               </span>
             </div>
-            <div>
+            <div className="bl-header-titles">
               <p
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -571,6 +571,26 @@ export default function App() {
                 {stats.lives}
               </span>
             </div>
+            {/* Settings gear — mobile only (Ajustes is a sidebar item on desktop) */}
+            <button
+              className="bl-header-gear"
+              aria-label="Ajustes"
+              onClick={() => handleNavClick('settings')}
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 38,
+                height: 38,
+                borderRadius: 9999,
+                background: '#160C26',
+                border: '1px solid #2A1840',
+                cursor: 'pointer',
+                fontSize: 16,
+                flexShrink: 0,
+              }}
+            >
+              ⚙️
+            </button>
           </div>
         </div>
       </header>
@@ -596,7 +616,7 @@ export default function App() {
               <button
                 key={targetView}
                 onClick={() => handleNavClick(targetView)}
-                className={`bl-navbtn${view === targetView ? ' active' : ''}`}
+                className={`bl-navbtn${view === targetView ? ' active' : ''}${targetView === 'settings' ? ' bl-navbtn-desktop-only' : ''}`}
                 aria-current={view === targetView ? 'page' : undefined}
               >
                 <span className="bl-navbtn-emoji">{emoji}</span>
