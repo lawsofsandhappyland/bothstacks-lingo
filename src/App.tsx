@@ -12,6 +12,7 @@ import LessonRunner from './components/LessonRunner';
 import TutorChat from './components/TutorChat';
 import SettingsView from './components/SettingsView';
 import AchievementsView from './components/AchievementsView';
+import Onboarding from './components/Onboarding';
 
 const STORAGE_KEYS = {
   STATS: 'bothlingo_stats',
@@ -48,6 +49,13 @@ export default function App() {
   const [tutorModel, setTutorModel] = useState<string>(DEFAULT_TUTOR_MODEL);
   const [uid, setUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try {
+      return !localStorage.getItem('bothlingo_onboarded');
+    } catch {
+      return false;
+    }
+  });
 
   // Bootstrap: auth → load from Firestore (or migrate from localStorage)
   useEffect(() => {
@@ -150,6 +158,13 @@ export default function App() {
     syncToFirestore(stats, completedLessons, m);
   };
 
+  const completeOnboarding = () => {
+    try {
+      localStorage.setItem('bothlingo_onboarded', 'true');
+    } catch { /* ignore */ }
+    setShowOnboarding(false);
+  };
+
   const activeLesson = lessonsData.find(l => l.id === activeLessonId);
 
   const handleNavClick = (targetView: ViewType) => {
@@ -174,6 +189,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-void text-ghost-white flex flex-col font-sans pb-28">
+      {!loading && showOnboarding && <Onboarding onComplete={completeOnboarding} />}
       {view !== 'lesson' && (
         <header className="sticky top-0 bg-void/90 backdrop-blur-md border-b-3 border-void py-3.5 px-4 z-40 transition-all">
           <div className="max-w-2xl mx-auto flex items-center justify-between">

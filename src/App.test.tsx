@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import App from './App';
 import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
+import { onboardingSlides } from './lib/onboardingSlides';
 
 vi.mock('./components/PathView', () => ({ default: () => <div data-testid="path-view" /> }));
 vi.mock('./components/LessonRunner', () => ({ default: () => <div data-testid="lesson-runner" /> }));
@@ -26,6 +27,7 @@ vi.mock('./lib/persistence', () => ({ loadUserDoc: vi.fn(), saveUserDoc: vi.fn()
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  localStorage.setItem('bothlingo_onboarded', 'true');
   vi.mocked(saveUserDoc).mockResolvedValue(undefined);
 });
 
@@ -82,5 +84,21 @@ describe('App', () => {
     const ajustesButton = screen.getByText('Ajustes').closest('button');
     await user.click(ajustesButton!);
     expect(await screen.findByTestId('settings-view')).toBeTruthy();
+  });
+
+  it('shows onboarding overlay on first run', async () => {
+    localStorage.removeItem('bothlingo_onboarded');
+
+    vi.mocked(getAuthReady).mockResolvedValue({ uid: 'u1' } as never);
+    vi.mocked(loadUserDoc).mockResolvedValue({
+      stats: { xp: 0, streak: 0, lives: 5, lastActiveDate: null },
+      completedLessons: [],
+      tutorModel: 'gemini-2.5-flash',
+    } as never);
+
+    render(<App />);
+    await waitFor(() => screen.getByTestId('path-view'));
+
+    expect(screen.getByText(onboardingSlides[0].title)).toBeTruthy();
   });
 });
