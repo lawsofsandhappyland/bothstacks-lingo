@@ -13,6 +13,8 @@ export interface UserStats {
   dailyXp?: number;
   /** toDateString() of the day dailyXp applies to; used to reset the daily goal at midnight. */
   dailyXpDate?: string | null;
+  /** Epoch ms anchor for the life-regeneration clock; null when lives are full. Optional for backward compatibility. */
+  livesUpdatedAt?: number | null;
 }
 
 export type AchievementKind = 'xp' | 'streak' | 'lessons';

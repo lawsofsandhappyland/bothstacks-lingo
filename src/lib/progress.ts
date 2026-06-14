@@ -1,6 +1,8 @@
 import type { UserStats } from '../types';
 
 export const DAILY_XP_GOAL = 30;
+export const MAX_LIVES = 5;
+export const LIFE_REGEN_MS = 4 * 60 * 60 * 1000;
 
 export const DEFAULT_STATS: UserStats = {
   xp: 0,
@@ -9,15 +11,31 @@ export const DEFAULT_STATS: UserStats = {
   lastActiveDate: null,
   streakFreezes: 0,
   dailyXp: 0,
-  dailyXpDate: null
+  dailyXpDate: null,
+  livesUpdatedAt: null
 };
 
 export function resetStats(): UserStats {
   return { ...DEFAULT_STATS };
 }
 
-export function loseLife(stats: UserStats): UserStats {
-  return { ...stats, lives: Math.max(0, stats.lives - 1) };
+export function loseLife(stats: UserStats, now: Date = new Date()): UserStats {
+  const newLives = Math.max(0, stats.lives - 1);
+  const livesUpdatedAt = stats.livesUpdatedAt ?? now.getTime();
+  return { ...stats, lives: newLives, livesUpdatedAt };
+}
+
+export function regenerateLives(stats: UserStats, now: Date = new Date()): UserStats {
+  if (stats.lives >= MAX_LIVES) { return stats.livesUpdatedAt == null ? stats : { ...stats, livesUpdatedAt: null }; }
+  // Legacy/missing anchor with non-full lives: start the regen clock now so a
+  // pre-feature (or 0-life) account is never stuck without regenerating.
+  if (stats.livesUpdatedAt == null) { return { ...stats, livesUpdatedAt: now.getTime() }; }
+  const elapsed = now.getTime() - stats.livesUpdatedAt;
+  if (elapsed < LIFE_REGEN_MS) { return stats; }
+  const regen = Math.floor(elapsed / LIFE_REGEN_MS);
+  const newLives = Math.min(MAX_LIVES, stats.lives + regen);
+  const newAnchor = newLives >= MAX_LIVES ? null : stats.livesUpdatedAt + regen * LIFE_REGEN_MS;
+  return { ...stats, lives: newLives, livesUpdatedAt: newAnchor };
 }
 
 export function computeLessonCompletion(

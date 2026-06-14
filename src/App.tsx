@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import type { ViewType, UserStats } from './types';
-import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats } from './lib/progress';
+import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats, regenerateLives } from './lib/progress';
 import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
 import { getAuthReady } from './lib/firebase';
@@ -72,7 +72,9 @@ export default function App() {
     getAuthReady().then(async (user) => {
       if (!user) {
         // Auth failed — fall back to localStorage
-        setStats(readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS));
+        const regenedStored = regenerateLives(readStoredJson(STORAGE_KEYS.STATS, DEFAULT_STATS), new Date());
+        setStats(regenedStored);
+        try { localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(regenedStored)); } catch { /* ignore */ }
         setCompletedLessons(readStoredJson(STORAGE_KEYS.COMPLETED, []));
         setTutorModel(readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL));
         setLoading(false);
@@ -83,9 +85,19 @@ export default function App() {
       const remote = await loadUserDoc(user.uid);
 
       if (remote) {
-        setStats(remote.stats);
+        const regened = regenerateLives(remote.stats, new Date());
+        setStats(regened);
         setCompletedLessons(remote.completedLessons);
         setTutorModel(remote.tutorModel || DEFAULT_TUTOR_MODEL);
+        // Persist a regen change BEFORE unblocking interaction so this bootstrap
+        // write cannot race with (and clobber) a quick first user action.
+        if (regened !== remote.stats) {
+          await saveUserDoc(user.uid, {
+            stats: regened,
+            completedLessons: remote.completedLessons,
+            tutorModel: remote.tutorModel || DEFAULT_TUTOR_MODEL,
+          }).catch(() => {});
+        }
         setLoading(false);
         return;
       }
@@ -95,14 +107,15 @@ export default function App() {
       const localCompleted = readStoredJson(STORAGE_KEYS.COMPLETED, []);
       const localModel = readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL);
 
-      setStats(localStats);
+      const regenedLocal = regenerateLives(localStats, new Date());
+      setStats(regenedLocal);
       setCompletedLessons(localCompleted);
       setTutorModel(localModel);
       setLoading(false);
 
-      // Seed Firestore with local data
+      // Seed Firestore with the regenerated local data (persists the regen anchor)
       await saveUserDoc(user.uid, {
-        stats: localStats,
+        stats: regenedLocal,
         completedLessons: localCompleted,
         tutorModel: localModel,
       }).catch(() => {});
@@ -112,6 +125,14 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEYS.COMPLETED);
       localStorage.removeItem(STORAGE_KEYS.MODEL);
     });
+  }, []);
+
+  // Regen lives while the app is open (checks every 60 s)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setStats(prev => regenerateLives(prev, new Date()));
+    }, 60000);
+    return () => clearInterval(id);
   }, []);
 
   // Persist state to Firestore on change

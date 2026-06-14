@@ -5,6 +5,7 @@ import App from './App';
 import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
 import { onboardingSlides } from './lib/onboardingSlides';
+import { LIFE_REGEN_MS } from './lib/progress';
 
 vi.mock('./components/PathView', () => ({ default: () => <div data-testid="path-view" /> }));
 vi.mock('./components/LessonRunner', () => ({ default: () => <div data-testid="lesson-runner" /> }));
@@ -120,5 +121,20 @@ describe('App', () => {
     await screen.findByTestId('path-view');
 
     expect(screen.getByText(onboardingSlides[0].title)).toBeTruthy();
+  });
+
+  it('regenerates lives from an old livesUpdatedAt on load', async () => {
+    const oldAnchor = Date.now() - 5 * LIFE_REGEN_MS;
+
+    vi.mocked(getAuthReady).mockResolvedValue({ uid: 'u1' } as never);
+    vi.mocked(loadUserDoc).mockResolvedValue({
+      stats: { xp: 0, streak: 0, lives: 1, lastActiveDate: null, livesUpdatedAt: oldAnchor },
+      completedLessons: [],
+      tutorModel: 'gemini-2.5-flash',
+    } as never);
+
+    render(<App />);
+    await screen.findByTestId('path-view');
+    expect(screen.getByText('5')).toBeTruthy();
   });
 });

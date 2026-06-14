@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_STATS, DAILY_XP_GOAL, computeLessonCompletion, dailyGoalProgress, loseLife, resetStats } from './progress';
+import { DEFAULT_STATS, DAILY_XP_GOAL, computeLessonCompletion, dailyGoalProgress, loseLife, resetStats, regenerateLives, MAX_LIVES, LIFE_REGEN_MS } from './progress';
 import type { UserStats } from '../types';
 
 describe('computeLessonCompletion', () => {
@@ -118,22 +118,31 @@ describe('streak freeze mechanic', () => {
 });
 
 describe('loseLife', () => {
-  it('(g) decrements lives by 1', () => {
+  const fixedNow = new Date(2026, 5, 14, 12, 0, 0);
+
+  it('(g) decrements lives by 1 and sets livesUpdatedAt when dropping from full', () => {
     const base: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null };
-    expect(loseLife(base).lives).toBe(4);
+    const result = loseLife(base, fixedNow);
+    expect(result.lives).toBe(4);
+    expect(result.livesUpdatedAt).toBe(fixedNow.getTime());
   });
 
   it('(h) floors at 0 when lives is 0', () => {
-    const base: UserStats = { xp: 0, streak: 0, lives: 0, lastActiveDate: null };
-    expect(loseLife(base).lives).toBe(0);
+    const anchor = fixedNow.getTime() - LIFE_REGEN_MS;
+    const base: UserStats = { xp: 0, streak: 0, lives: 0, lastActiveDate: null, livesUpdatedAt: anchor };
+    const result = loseLife(base, fixedNow);
+    expect(result.lives).toBe(0);
+    expect(result.livesUpdatedAt).toBe(anchor);
   });
 
-  it('(i) leaves xp, streak, lastActiveDate unchanged', () => {
-    const base: UserStats = { xp: 100, streak: 7, lives: 3, lastActiveDate: 'Mon Jun 14 2026' };
-    const result = loseLife(base);
+  it('(i) leaves xp, streak, lastActiveDate unchanged; preserves existing anchor', () => {
+    const anchor = fixedNow.getTime() - 1000;
+    const base: UserStats = { xp: 100, streak: 7, lives: 3, lastActiveDate: 'Mon Jun 14 2026', livesUpdatedAt: anchor };
+    const result = loseLife(base, fixedNow);
     expect(result.xp).toBe(100);
     expect(result.streak).toBe(7);
     expect(result.lastActiveDate).toBe('Mon Jun 14 2026');
+    expect(result.livesUpdatedAt).toBe(anchor);
   });
 });
 
@@ -207,5 +216,46 @@ describe('dailyGoalProgress', () => {
     const stats: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null, dailyXp: 30, dailyXpDate: todayStr };
     const result = dailyGoalProgress(stats, now);
     expect(result.met).toBe(true);
+  });
+});
+
+describe('regenerateLives', () => {
+  const base = new Date(2026, 5, 14, 12, 0, 0);
+
+  it('(a) lives at MAX with non-null anchor: clears anchor to null, lives stay MAX', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: MAX_LIVES, lastActiveDate: null, livesUpdatedAt: base.getTime() - LIFE_REGEN_MS };
+    const result = regenerateLives(stats, base);
+    expect(result.lives).toBe(MAX_LIVES);
+    expect(result.livesUpdatedAt).toBeNull();
+  });
+
+  it('(b) lives < MAX with null anchor: starts the regen clock at now (legacy/0-life recovery)', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: null };
+    const result = regenerateLives(stats, base);
+    expect(result.lives).toBe(3);
+    expect(result.livesUpdatedAt).toBe(base.getTime());
+  });
+
+  it('(c) anchor set, elapsed < LIFE_REGEN_MS: no change, returns same stats reference', () => {
+    const anchor = base.getTime() - LIFE_REGEN_MS + 1000;
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: anchor };
+    const result = regenerateLives(stats, base);
+    expect(result).toBe(stats);
+  });
+
+  it('(d) elapsed = 2 * LIFE_REGEN_MS with lives 1: lives 3, anchor advanced by 2 * LIFE_REGEN_MS', () => {
+    const anchor = base.getTime() - 2 * LIFE_REGEN_MS;
+    const stats: UserStats = { xp: 0, streak: 0, lives: 1, lastActiveDate: null, livesUpdatedAt: anchor };
+    const result = regenerateLives(stats, base);
+    expect(result.lives).toBe(3);
+    expect(result.livesUpdatedAt).toBe(anchor + 2 * LIFE_REGEN_MS);
+  });
+
+  it('(e) enough elapsed to exceed MAX: lives clamped to MAX and anchor null', () => {
+    const anchor = base.getTime() - 5 * LIFE_REGEN_MS;
+    const stats: UserStats = { xp: 0, streak: 0, lives: 1, lastActiveDate: null, livesUpdatedAt: anchor };
+    const result = regenerateLives(stats, base);
+    expect(result.lives).toBe(MAX_LIVES);
+    expect(result.livesUpdatedAt).toBeNull();
   });
 });
