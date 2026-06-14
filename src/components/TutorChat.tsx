@@ -50,13 +50,14 @@ function base64ToInt16Array(base64: string) {
 }
 
 /**
- * A Gemini Live voice-practice tutor that fetches a short-lived server token,
+ * A voice-practice tutor that fetches a short-lived server token,
  * streams microphone audio over a WebSocket, and plays back the tutor's audio with live transcripts.
  */
 export default function TutorChat() {
   const [status, setStatus] = useState<TutorStatus>('idle');
   const [error, setError] = useState('');
   const [lines, setLines] = useState<TranscriptLine[]>([]);
+  const [speaking, setSpeaking] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -66,6 +67,7 @@ export default function TutorChat() {
   const streamRef = useRef<MediaStream | null>(null);
   const nextPlaybackTimeRef = useRef(0);
   const lineIdRef = useRef(0);
+  const speakTimerRef = useRef<number | null>(null);
 
   const addLine = (speaker: TranscriptLine['speaker'], text: string) => {
     const cleanText = text.trim();
@@ -92,6 +94,12 @@ export default function TutorChat() {
     sourceRef.current = null;
     streamRef.current = null;
     inputContextRef.current = null;
+
+    if (speakTimerRef.current !== null) {
+      window.clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = null;
+    }
+    setSpeaking(false);
   };
 
   const stopSession = () => {
@@ -120,6 +128,19 @@ export default function TutorChat() {
     const startAt = Math.max(audioContext.currentTime, nextPlaybackTimeRef.current);
     source.start(startAt);
     nextPlaybackTimeRef.current = startAt + buffer.duration;
+
+    setSpeaking(true);
+    if (speakTimerRef.current !== null) {
+      window.clearTimeout(speakTimerRef.current);
+    }
+    // Wait out any already-queued chunks (startAt may be in the future) plus this
+    // chunk's own duration before flipping back to listening, so the orb doesn't
+    // say "listening" while buffered tutor audio is still playing.
+    const queuedSeconds = Math.max(0, startAt - audioContext.currentTime) + buffer.duration;
+    speakTimerRef.current = window.setTimeout(
+      () => setSpeaking(false),
+      Math.max(150, queuedSeconds * 1000 + 150)
+    );
   };
 
   const startSession = async () => {
@@ -129,12 +150,12 @@ export default function TutorChat() {
     try {
       const tokenResponse = await fetch('/api/live-token', { method: 'POST' });
       if (!tokenResponse.ok) {
-        throw new Error('The server could not create a Gemini Live token.');
+        throw new Error('No pudimos conectar con el tutor. Inténtalo de nuevo en un momento.');
       }
 
       const { token } = await tokenResponse.json() as { token?: string };
       if (!token) {
-        throw new Error('The server returned an empty Gemini Live token.');
+        throw new Error('No pudimos iniciar la sesión de voz. Inténtalo de nuevo.');
       }
 
       const inputContext = new AudioContext();
@@ -217,7 +238,7 @@ export default function TutorChat() {
       };
 
       socket.onerror = () => {
-        setError('Gemini Live connection failed. Check the server log and microphone permission.');
+        setError('No pudimos conectar. Revisa el permiso del micrófono e inténtalo de nuevo.');
         setStatus('error');
       };
 
@@ -229,75 +250,194 @@ export default function TutorChat() {
         setStatus(prev => (prev === 'error' ? 'error' : 'idle'));
       };
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : 'Could not start live tutor.';
+      const message = caughtError instanceof Error ? caughtError.message : 'No pudimos iniciar el tutor de voz.';
       setError(message);
       setStatus('error');
       stopSession();
     }
   };
 
+  // Derived state
   const isLive = status === 'live';
   const isConnecting = status === 'connecting';
+  const isError = status === 'error';
+
+  // Status indicator
+  let dotColor: string;
+  let statusLabel: string;
+  if (isError) {
+    dotColor = 'bg-red-500';
+    statusLabel = 'Algo salió mal';
+  } else if (isConnecting) {
+    dotColor = 'bg-electric-blue';
+    statusLabel = 'Conectando…';
+  } else if (isLive && speaking) {
+    dotColor = 'bg-success-green';
+    statusLabel = 'Hablando…';
+  } else if (isLive && !speaking) {
+    dotColor = 'bg-fuchsia-accent';
+    statusLabel = 'Escuchando…';
+  } else {
+    dotColor = 'bg-muted';
+    statusLabel = 'En reposo';
+  }
+
+  // Orb background
+  let orbBg: string;
+  if (isLive && speaking) {
+    orbBg = 'bg-success-green';
+  } else if (isLive && !speaking) {
+    orbBg = 'bg-fuchsia-accent';
+  } else {
+    orbBg = 'bg-electric-blue';
+  }
+
+  // Hero copy
+  let headline: string;
+  let subline: string;
+  if (isError) {
+    headline = 'Algo salió mal';
+    subline = 'Revisa tu micrófono e inténtalo de nuevo.';
+  } else if (isConnecting) {
+    headline = 'Conectando con El Pingüino…';
+    subline = 'Un momento, preparando tu sesión de voz.';
+  } else if (isLive && speaking) {
+    headline = 'El Pingüino está respondiendo';
+    subline = 'Escucha y repite en voz alta cuando termine.';
+  } else if (isLive && !speaking) {
+    headline = 'Te escucho — habla con confianza';
+    subline = 'Di lo que quieras en español. No te preocupes por los errores.';
+  } else {
+    headline = 'Practica español hablando en voz alta';
+    subline = 'El Pingüino te escucha, te responde y te corrige con cariño.';
+  }
 
   return (
-    <div className="w-full max-w-2xl px-4 py-6 pb-32 mx-auto">
-      <section className="retro-card bg-deep-violet text-ghost-white flex flex-col gap-6">
-        <div className="flex items-center gap-4">
-          <picture className="animate-float">
-            <source srcSet="/mascot-wave.webp" type="image/webp" />
-            <img src="/mascot-wave.png" alt="Spanish voice tutor" width={88} height={88} className="drop-shadow-lg" />
-          </picture>
-          <div>
-            <span className="ui-label text-fuchsia-accent text-[10px]">Gemini Live</span>
-            <h2 className="text-2xl font-black text-flame-orange tracking-tight">VOICE PRACTICE</h2>
-            <p className="ui-label text-slate-grey text-[10px]">{LIVE_MODEL}</p>
+    <div className="w-full max-w-2xl px-4 py-6 pb-32 mx-auto flex flex-col gap-4">
+      {/* Hero card */}
+      <div
+        className="arcade-card-hero p-6 flex flex-col items-center gap-5"
+        style={{
+          background: 'radial-gradient(420px 280px at 50% 0%, rgba(232,57,246,0.16), transparent 70%), var(--color-card-alt)',
+          border: '1px solid var(--color-raised-edge)',
+        }}
+      >
+        {/* Status line */}
+        <div className="flex items-center gap-2 self-start">
+          <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-body-lifted">{statusLabel}</span>
+        </div>
+
+        {/* Orb */}
+        <div className="relative flex items-center justify-center" style={{ width: 150, height: 150 }}>
+          {/* Expanding rings when listening */}
+          {isLive && !speaking && (
+            <>
+              <span
+                className="absolute inset-0 rounded-full animate-ring"
+                style={{ backgroundColor: 'rgba(232,57,246,0.25)', border: '1px solid rgba(232,57,246,0.4)' }}
+              />
+              <span
+                className="absolute inset-0 rounded-full animate-ring"
+                style={{ backgroundColor: 'rgba(232,57,246,0.15)', border: '1px solid rgba(232,57,246,0.3)', animationDelay: '0.9s' }}
+              />
+            </>
+          )}
+
+          {/* Main orb circle */}
+          <div
+            className={`relative w-[150px] h-[150px] rounded-full flex items-center justify-center overflow-hidden transition-colors duration-300 ${orbBg}`}
+            style={{ border: '3px solid var(--color-hard-shadow)', boxShadow: '0 8px 0 0 var(--color-hard-shadow), 0 12px 32px rgba(0,0,0,0.5)' }}
+          >
+            {isLive && speaking ? (
+              /* Waveform bars */
+              <div className="flex items-center gap-1" style={{ height: 48 }}>
+                <span className="w-2 rounded-full animate-bar delay-1" style={{ height: 32, backgroundColor: 'var(--color-void)', transformOrigin: 'center' }} />
+                <span className="w-2 rounded-full animate-bar delay-2" style={{ height: 40, backgroundColor: 'var(--color-void)', transformOrigin: 'center' }} />
+                <span className="w-2 rounded-full animate-bar delay-3" style={{ height: 48, backgroundColor: 'var(--color-void)', transformOrigin: 'center' }} />
+                <span className="w-2 rounded-full animate-bar delay-4" style={{ height: 40, backgroundColor: 'var(--color-void)', transformOrigin: 'center' }} />
+                <span className="w-2 rounded-full animate-bar delay-5" style={{ height: 32, backgroundColor: 'var(--color-void)', transformOrigin: 'center' }} />
+              </div>
+            ) : (
+              /* Mascot */
+              <picture className="animate-float">
+                <source srcSet="/mascot-wave.webp" type="image/webp" />
+                <img src="/mascot-wave.png" alt="El Pingüino, tu tutor de español" width={120} height={120} className="drop-shadow-lg" />
+              </picture>
+            )}
           </div>
         </div>
 
-        <div className="bg-void/60 border-3 border-void rounded-2xl p-5 min-h-[15rem] flex flex-col gap-3">
-          {lines.length === 0 ? (
-            <div className="h-full min-h-[12rem] flex flex-col items-center justify-center text-center gap-3">
-              <span className={`block w-20 h-20 rounded-full border-3 border-void ${isLive ? 'bg-fuchsia-accent animate-pulse-glow' : 'bg-electric-blue'}`}></span>
-              <p className="font-bold text-ghost-white">
-                {isLive ? 'Speak Spanish now. El Pingüino is listening.' : 'Start a live conversation and practice out loud.'}
-              </p>
-              <p className="text-xs text-slate-grey max-w-sm">
-                The real Gemini key stays on the server. Your browser receives a one-use Live API token for this session.
-              </p>
-            </div>
-          ) : (
-            lines.map(line => (
-              <div key={line.id} className={`rounded-xl border border-void p-3 ${line.speaker === 'You' ? 'bg-fuchsia-accent/20 ml-8' : 'bg-void mr-8'}`}>
-                <span className="ui-label text-[9px] text-slate-grey">{line.speaker}</span>
-                <p className="text-sm font-bold leading-relaxed">{line.text}</p>
-              </div>
-            ))
-          )}
+        {/* Hero copy */}
+        <div className="text-center flex flex-col gap-1" style={{ maxWidth: 380 }}>
+          <p className="font-bold text-base text-ghost-white">{headline}</p>
+          <p className="text-[13px] text-body-lifted">{subline}</p>
         </div>
 
+        {/* Single toggle button */}
+        {(status === 'idle' || isError) && (
+          <button
+            onClick={() => void startSession()}
+            className="pill-button pill-button-fuchsia"
+          >
+            🎤 Empezar a hablar
+          </button>
+        )}
+        {isConnecting && (
+          <button
+            onClick={stopSession}
+            className="pill-button bg-muted text-ghost-white"
+            style={{ borderColor: 'var(--color-muted)' }}
+          >
+            Conectando… · Cancelar
+          </button>
+        )}
+        {isLive && (
+          <button
+            onClick={stopSession}
+            className="pill-button bg-muted text-ghost-white"
+            style={{ borderColor: 'var(--color-muted)' }}
+          >
+            Detener
+          </button>
+        )}
+
+        {/* Error box */}
         {error && (
-          <div className="bg-red-950 border-3 border-red-800 rounded-2xl p-3 text-sm text-red-100">
+          <div className="w-full bg-red-950 border border-red-800 rounded-2xl p-3 text-sm text-red-100">
             {error}
           </div>
         )}
+      </div>
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => void startSession()}
-            disabled={isLive || isConnecting}
-            className={`pill-button pill-button-fuchsia flex-1 ${isLive || isConnecting ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {isConnecting ? 'CONNECTING...' : isLive ? 'LIVE' : 'START TALKING'}
-          </button>
-          <button
-            onClick={stopSession}
-            disabled={!isLive && !isConnecting}
-            className={`pill-button bg-void text-ghost-white border-void px-5 ${!isLive && !isConnecting ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            STOP
-          </button>
-        </div>
-      </section>
+      {/* Transcript card */}
+      <div className="arcade-card p-5 flex flex-col gap-3">
+        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">Conversación</span>
+
+        {lines.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center gap-2 py-8">
+            <span className="text-3xl">💬</span>
+            <p className="font-bold text-ghost-white text-sm">Pulsa el micrófono y di «¡Hola!» — El Pingüino te responderá en voz alta.</p>
+            <p className="text-[12px] text-muted">Empieza con saludos, café o tu próximo despliegue. Sin prisa, sin notas.</p>
+          </div>
+        ) : (
+          lines.map(line => (
+            <div
+              key={line.id}
+              className={`rounded-xl border p-3 ${line.speaker === 'You' ? 'ml-8 text-right' : 'mr-8 text-left'}`}
+              style={{
+                backgroundColor: line.speaker === 'You' ? 'rgba(232,57,246,0.12)' : 'rgba(255,255,255,0.04)',
+                borderColor: line.speaker === 'You' ? 'var(--color-fuchsia-accent)' : 'var(--color-raised-edge)',
+              }}
+            >
+              <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-muted block">
+                {line.speaker === 'You' ? 'Tú' : 'El Pingüino'}
+              </span>
+              <p className="text-sm font-bold leading-relaxed">{line.text}</p>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

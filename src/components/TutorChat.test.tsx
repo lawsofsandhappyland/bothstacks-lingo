@@ -100,23 +100,19 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('TutorChat', () => {
-  it('shows idle start button and a disabled STOP button on initial render', () => {
+  it('shows idle mic button on initial render and it is not disabled', () => {
     render(<TutorChat />);
 
-    const startButton = screen.getByRole('button', { name: 'START TALKING' });
+    const startButton = screen.getByRole('button', { name: /empezar a hablar/i });
     expect(startButton).toBeTruthy();
     expect(startButton.hasAttribute('disabled')).toBe(false);
-
-    const stopButton = screen.getByRole('button', { name: 'STOP' });
-    expect(stopButton).toBeTruthy();
-    expect(stopButton).toBeDisabled();
   });
 
   it('calls fetch with /api/live-token, opens a WebSocket, and goes live after socket open', async () => {
     const user = userEvent.setup();
     render(<TutorChat />);
 
-    await user.click(screen.getByRole('button', { name: 'START TALKING' }));
+    await user.click(screen.getByRole('button', { name: /empezar a hablar/i }));
 
     expect(fetch).toHaveBeenCalledWith('/api/live-token', { method: 'POST' });
 
@@ -129,11 +125,8 @@ describe('TutorChat', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'LIVE' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /detener/i })).toBeTruthy();
     });
-
-    const stopButton = screen.getByRole('button', { name: 'STOP' });
-    expect(stopButton).not.toBeDisabled();
 
     expect(FakeWebSocket.instances[0].sent.length).toBeGreaterThanOrEqual(1);
     expect(FakeWebSocket.instances[0].sent[0]).toContain('setup');
@@ -143,7 +136,7 @@ describe('TutorChat', () => {
     const user = userEvent.setup();
     render(<TutorChat />);
 
-    await user.click(screen.getByRole('button', { name: 'START TALKING' }));
+    await user.click(screen.getByRole('button', { name: /empezar a hablar/i }));
 
     await waitFor(() => {
       expect(FakeWebSocket.instances.length).toBe(1);
@@ -154,7 +147,7 @@ describe('TutorChat', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'LIVE' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /detener/i })).toBeTruthy();
     });
 
     act(() => {
@@ -170,11 +163,11 @@ describe('TutorChat', () => {
     await screen.findByText(/Hola mundo/);
   });
 
-  it('closes the socket and returns to idle when STOP is clicked', async () => {
+  it('closes the socket and returns to idle when Detener is clicked', async () => {
     const user = userEvent.setup();
     render(<TutorChat />);
 
-    await user.click(screen.getByRole('button', { name: 'START TALKING' }));
+    await user.click(screen.getByRole('button', { name: /empezar a hablar/i }));
 
     await waitFor(() => {
       expect(FakeWebSocket.instances.length).toBe(1);
@@ -185,19 +178,19 @@ describe('TutorChat', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'LIVE' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /detener/i })).toBeTruthy();
     });
 
-    await user.click(screen.getByRole('button', { name: 'STOP' }));
+    await user.click(screen.getByRole('button', { name: /detener/i }));
 
     expect(FakeWebSocket.instances[0].readyState).toBe(3);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'START TALKING' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /empezar a hablar/i })).toBeTruthy();
     });
   });
 
-  it('shows an error message when fetch returns ok: false', async () => {
+  it('shows a friendly error message when fetch returns ok: false', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,
       json: async () => ({}),
@@ -206,11 +199,11 @@ describe('TutorChat', () => {
     const user = userEvent.setup();
     render(<TutorChat />);
 
-    await user.click(screen.getByRole('button', { name: 'START TALKING' }));
+    await user.click(screen.getByRole('button', { name: /empezar a hablar/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText('The server could not create a Gemini Live token.'),
+        screen.getByText('No pudimos conectar con el tutor. Inténtalo de nuevo en un momento.'),
       ).toBeTruthy();
     });
   });
