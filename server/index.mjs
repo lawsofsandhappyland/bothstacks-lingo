@@ -16,6 +16,7 @@ const distDir = join(rootDir, 'dist');
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '127.0.0.1';
 const liveModel = 'gemini-3.1-flash-live-preview';
+const practiceModel = 'gemini-3.5-flash';
 
 const allowedModels = new Set([
   'gemini-2.5-flash',
@@ -285,7 +286,7 @@ async function handlePractice(request, response) {
   const level = Number.isFinite(rawLevel) ? Math.max(1, Math.min(50, rawLevel)) : 1;
 
   const geminiResponse = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    `https://generativelanguage.googleapis.com/v1beta/models/${practiceModel}:generateContent`,
     {
       method: 'POST',
       headers: {
@@ -301,7 +302,7 @@ async function handlePractice(request, response) {
         ],
         generationConfig: {
           temperature: 0.6,
-          maxOutputTokens: 1200,
+          maxOutputTokens: 4096,
           responseMimeType: 'application/json',
         },
       }),
@@ -320,8 +321,13 @@ async function handlePractice(request, response) {
 
   try {
     const parsed = JSON.parse(rawText);
-    sendJson(response, 200, { exercises: Array.isArray(parsed.exercises) ? parsed.exercises : [] });
+    const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : [];
+    if (exercises.length === 0) {
+      console.warn('Practice: model returned no usable exercises.', { finishReason: data.candidates?.[0]?.finishReason, rawTextSnippet: rawText.slice(0, 200) });
+    }
+    sendJson(response, 200, { exercises });
   } catch {
+    console.warn('Practice: failed to parse model JSON.', { finishReason: data.candidates?.[0]?.finishReason, rawTextSnippet: rawText.slice(0, 200) });
     sendJson(response, 200, { exercises: [] });
   }
 }
