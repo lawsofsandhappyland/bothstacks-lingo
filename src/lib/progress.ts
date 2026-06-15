@@ -83,6 +83,16 @@ export function computeLessonCompletion(
   return { stats: updatedStats, completedLessons: newCompleted };
 }
 
+/** ms until the next life regenerates, or null when lives are full (nothing pending). */
+export function msUntilNextLife(stats: UserStats, now: Date = new Date()): number | null {
+  if (stats.lives >= MAX_LIVES) { return null; }
+  if (stats.livesUpdatedAt == null) { return LIFE_REGEN_MS; }
+  const elapsed = Math.max(0, now.getTime() - stats.livesUpdatedAt);
+  const intoInterval = elapsed % LIFE_REGEN_MS;
+  const remaining = LIFE_REGEN_MS - intoInterval;
+  return remaining;
+}
+
 export function dailyGoalProgress(stats: UserStats, now: Date = new Date()): { earned: number; goal: number; met: boolean } {
   const today = now.toDateString();
   const earned = stats.dailyXpDate === today ? (stats.dailyXp ?? 0) : 0;

@@ -15,6 +15,7 @@ import { plural } from './lib/format';
 
 import Onboarding from './components/Onboarding';
 import OfflineBanner from './components/OfflineBanner';
+import HeartsCountdown from './components/HeartsCountdown';
 
 // Lazy-loaded route views (code-split into separate chunks)
 const PathView = lazy(() => import('./components/PathView'));
@@ -572,6 +573,7 @@ export default function App() {
                 {stats.lives}
               </span>
             </div>
+            <HeartsCountdown stats={stats} />
             {/* Settings gear — mobile only (Ajustes is a sidebar item on desktop) */}
             <button
               className="bl-header-gear"
