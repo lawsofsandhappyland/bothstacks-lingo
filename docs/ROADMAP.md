@@ -18,6 +18,7 @@ pass before merge to `main`. Suite: 122 tests across 13 files.
 - [x] Stats / progress dashboard (Progreso)
 - [x] Onboarding flow for first-time users
 - [x] Spaced-repetition review queue for completed lessons (Repaso: real decay model + closed-loop review sessions)
+- [x] Learner level + rank progression (Aprendiz to Leyenda) derived from cumulative XP (`lib/levels.ts`)
 - [ ] More lessons + categories / difficulty tiers (content work)
 
 ## Phase 2 — Quality & accessibility

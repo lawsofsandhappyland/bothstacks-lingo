@@ -12,6 +12,7 @@ import type { ActivityLog } from './lib/analytics';
 import { evaluateAchievements } from './lib/achievements';
 import { buildReviewLesson, REVIEW_SESSION_ID } from './lib/reviewSession';
 import { plural } from './lib/format';
+import { getLevelInfo } from './lib/levels';
 
 import Onboarding from './components/Onboarding';
 import OfflineBanner from './components/OfflineBanner';
@@ -330,8 +331,7 @@ export default function App() {
     setView('repaso');
   };
 
-  // Level computed from XP
-  const level = Math.floor(stats.xp / 100) + 1;
+  const levelInfo = getLevelInfo(stats.xp);
 
   // Nearest locked achievement for the right rail
   const achievementStatuses = evaluateAchievements(stats, completedLessons);
@@ -660,7 +660,7 @@ export default function App() {
                   marginTop: 2,
                 }}
               >
-                Nivel {level} · Aprendiz
+                Nivel {levelInfo.level} · {levelInfo.title}
               </p>
             </div>
           </div>
