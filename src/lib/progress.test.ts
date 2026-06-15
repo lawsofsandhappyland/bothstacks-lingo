@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_STATS, DAILY_XP_GOAL, computeLessonCompletion, dailyGoalProgress, loseLife, resetStats, regenerateLives, MAX_LIVES, LIFE_REGEN_MS } from './progress';
+import { DEFAULT_STATS, DAILY_XP_GOAL, computeLessonCompletion, dailyGoalProgress, loseLife, resetStats, regenerateLives, msUntilNextLife, MAX_LIVES, LIFE_REGEN_MS } from './progress';
 import type { UserStats } from '../types';
 
 describe('computeLessonCompletion', () => {
@@ -216,6 +216,42 @@ describe('dailyGoalProgress', () => {
     const stats: UserStats = { xp: 0, streak: 0, lives: 5, lastActiveDate: null, dailyXp: 30, dailyXpDate: todayStr };
     const result = dailyGoalProgress(stats, now);
     expect(result.met).toBe(true);
+  });
+});
+
+describe('msUntilNextLife', () => {
+  const now = new Date(2026, 5, 14, 12, 0, 0);
+
+  it('(m1) lives at MAX (5) -> returns null', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: MAX_LIVES, lastActiveDate: null, livesUpdatedAt: null };
+    expect(msUntilNextLife(stats, now)).toBeNull();
+  });
+
+  it('(m2) lives 3 with livesUpdatedAt null -> returns LIFE_REGEN_MS', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: null };
+    expect(msUntilNextLife(stats, now)).toBe(LIFE_REGEN_MS);
+  });
+
+  it('(m3) lives 3, anchor exactly now -> returns LIFE_REGEN_MS', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: now.getTime() };
+    expect(msUntilNextLife(stats, now)).toBe(LIFE_REGEN_MS);
+  });
+
+  it('(m4) anchor 1h ago -> 3h remaining (ms)', () => {
+    const oneHour = 60 * 60 * 1000;
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: now.getTime() - oneHour };
+    expect(msUntilNextLife(stats, now)).toBe(3 * 60 * 60 * 1000);
+  });
+
+  it('(m5) anchor 5h ago (1h into 2nd interval) -> 3h remaining (ms)', () => {
+    const fiveHours = 5 * 60 * 60 * 1000;
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: now.getTime() - fiveHours };
+    expect(msUntilNextLife(stats, now)).toBe(3 * 60 * 60 * 1000);
+  });
+
+  it('(m6) anchor in the future (now < anchor) -> clamped to LIFE_REGEN_MS', () => {
+    const stats: UserStats = { xp: 0, streak: 0, lives: 3, lastActiveDate: null, livesUpdatedAt: now.getTime() + 5000 };
+    expect(msUntilNextLife(stats, now)).toBe(LIFE_REGEN_MS);
   });
 });
 
