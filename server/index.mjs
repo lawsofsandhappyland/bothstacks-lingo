@@ -205,6 +205,128 @@ async function handleTutor(request, response) {
 }
 
 /**
+ * Build a prompt for the practice endpoint, instructing Gemini to produce Spanish
+ * exercises targeting the learner's specific weak words at the appropriate difficulty.
+ */
+function buildPracticePrompt({ words, level }) {
+  const wordList = words
+    .map(w => `  - "${w.word}" (${w.translation})`)
+    .join('\n');
+
+  let difficultyGuidance;
+  if (level <= 2) {
+    difficultyGuidance =
+      'Difficulty: levels 1-2. Use simple recall and direct translation. Keep sentences short and vocabulary basic.';
+  } else if (level <= 7) {
+    difficultyGuidance =
+      'Difficulty: levels 3-7. Use short sentences that give context for the word. Include everyday situations.';
+  } else {
+    difficultyGuidance =
+      'Difficulty: levels 8+. Use nuanced usage: ser vs estar, gender agreement, por vs para, and trickier distractors that are plausible but wrong.';
+  }
+
+  return `You are El Pinguino, the BothStacks Spanish tutor.
+Generate practice exercises for a Spanish learner. Respond with VALID JSON ONLY.
+
+JSON shape: {"exercises": [ ... ]}
+Produce EXACTLY 6 exercises. Each exercise object must have these keys:
+  "type": only "multiple-choice" or "fill-blank"
+  "instruction": a short Spanish instruction telling the learner what to do
+  "questionText": the question or sentence in Spanish (for fill-blank, include a blank written as _____)
+  "options": an array of 3 or 4 short Spanish strings
+  "correctAnswer": MUST be EXACTLY one of the strings in "options" (verbatim, character for character)
+
+Rules:
+- All instructions and questions must be in Spanish.
+- The exercises must drill these specific weak words:
+${wordList}
+- Build questions whose answer or focus is one of those Spanish words.
+- ${difficultyGuidance}
+- Keep the coding/Linux/cloud/coffee theme only when it fits naturally.
+- Do not ask for or reveal secrets or API keys.
+- Respond with valid JSON only, no markdown, no extra text.`;
+}
+
+/**
+ * Handle POST /api/practice requests, generating personalized Spanish exercises via Gemini API.
+ */
+async function handlePractice(request, response) {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    sendJson(response, 503, {
+      error: 'GEMINI_API_KEY is not configured on the server.'
+    });
+    return;
+  }
+
+  const body = await readRequestJson(request);
+
+  if (!Array.isArray(body.words)) {
+    sendJson(response, 400, { error: 'words must be an array.' });
+    return;
+  }
+
+  const sanitizedWords = body.words
+    .filter(w => w !== null && typeof w === 'object')
+    .map(w => ({
+      word: String(w.word || '').slice(0, 60),
+      translation: String(w.translation || '').slice(0, 60),
+    }))
+    .filter(w => w.word.length > 0)
+    .slice(0, 8);
+
+  if (sanitizedWords.length === 0) {
+    sendJson(response, 400, { error: 'words must contain at least one entry with a non-empty word.' });
+    return;
+  }
+
+  const rawLevel = parseInt(String(body.level ?? '1'), 10);
+  const level = Number.isFinite(rawLevel) ? Math.max(1, Math.min(50, rawLevel)) : 1;
+
+  const geminiResponse = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: buildPracticePrompt({ words: sanitizedWords, level }) }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.6,
+          maxOutputTokens: 1200,
+          responseMimeType: 'application/json',
+        },
+      }),
+    }
+  );
+
+  if (!geminiResponse.ok) {
+    const errorText = await geminiResponse.text();
+    console.error('Gemini API failed (practice):', geminiResponse.status, errorText);
+    sendJson(response, 502, { error: 'Gemini API call failed.' });
+    return;
+  }
+
+  const data = await geminiResponse.json();
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  try {
+    const parsed = JSON.parse(rawText);
+    sendJson(response, 200, { exercises: Array.isArray(parsed.exercises) ? parsed.exercises : [] });
+  } catch {
+    sendJson(response, 200, { exercises: [] });
+  }
+}
+
+/**
  * Handle POST /api/live-token requests, creating and returning a Gemini Live API session token.
  */
 async function handleLiveToken(_request, response) {
@@ -292,6 +414,11 @@ const server = createServer(async (request, response) => {
 
     if (request.url?.startsWith('/api/live-token') && request.method === 'POST') {
       await handleLiveToken(request, response);
+      return;
+    }
+
+    if (request.url?.startsWith('/api/practice') && request.method === 'POST') {
+      await handlePractice(request, response);
       return;
     }
 

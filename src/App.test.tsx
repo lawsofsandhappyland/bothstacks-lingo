@@ -14,6 +14,7 @@ vi.mock('./components/SettingsView', () => ({ default: () => <div data-testid="s
 vi.mock('./components/AchievementsView', () => ({ default: () => <div data-testid="achievements-view" /> }));
 vi.mock('./components/ProgressView', () => ({ default: () => <div data-testid="progress-view" /> }));
 vi.mock('./components/ReviewView', () => ({ default: () => <div data-testid="review-view" /> }));
+vi.mock('./components/PracticeView', () => ({ default: () => <div data-testid="practice-view" /> }));
 
 vi.mock('./lib/audio', () => ({
   soundEffects: {

@@ -11,6 +11,7 @@ import { recordActivity, dayKey } from './lib/analytics';
 import type { ActivityLog } from './lib/analytics';
 import { evaluateAchievements } from './lib/achievements';
 import { buildReviewLesson, REVIEW_SESSION_ID } from './lib/reviewSession';
+import { selectPracticeTargets, buildPracticeRequest, sanitizePracticeExercises, buildPracticeLesson, coveredTargetKeys, PRACTICE_SESSION_ID } from './lib/practice';
 import { plural } from './lib/format';
 import { getLevelInfo } from './lib/levels';
 
@@ -26,6 +27,7 @@ const SettingsView = lazy(() => import('./components/SettingsView'));
 const AchievementsView = lazy(() => import('./components/AchievementsView'));
 const ProgressView = lazy(() => import('./components/ProgressView'));
 const ReviewView = lazy(() => import('./components/ReviewView'));
+const PracticeView = lazy(() => import('./components/PracticeView'));
 
 const STORAGE_KEYS = {
   STATS: 'bothlingo_stats',
@@ -72,6 +74,7 @@ function seedLegacyActivity(log: ActivityLog, stats: UserStats, completed: numbe
 const VIEW_META: Record<Exclude<ViewType, 'lesson'>, { crumb: string; title: string }> = {
   path: { crumb: 'Tu camino', title: 'Camino de Lingo' },
   repaso: { crumb: 'Repaso espaciado', title: 'Repaso' },
+  practica: { crumb: 'Práctica adaptativa', title: 'Práctica' },
   tutor: { crumb: 'Práctica en vivo', title: 'Tutor de voz' },
   achievements: { crumb: 'Colección', title: 'Logros' },
   progress: { crumb: 'Tu progreso', title: 'Progreso' },
@@ -96,6 +99,10 @@ export default function App() {
   const [reviewLog, setReviewLog] = useState<ReviewLog>({});
   const [activityLog, setActivityLog] = useState<ActivityLog>({});
   const [reviewSession, setReviewSession] = useState<{ lesson: Lesson; keys: string[] } | null>(null);
+  const [practiceSession, setPracticeSession] = useState<{ lesson: Lesson; keys: string[] } | null>(null);
+  const [practiceLoading, setPracticeLoading] = useState(false);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
+  const practiceRequestSeq = useRef(0);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
       return !localStorage.getItem('bothlingo_onboarded');
@@ -271,6 +278,8 @@ export default function App() {
     setActiveLessonId(null);
     setReviewLog(emptyLog);
     setActivityLog(emptyActivity);
+    setPracticeSession(null);
+    setPracticeError(null);
     setView('path');
 
     syncToFirestore(resetStatsValue, [], tutorModel, emptyLog, emptyActivity);
@@ -292,6 +301,8 @@ export default function App() {
 
   const handleNavClick = (targetView: ViewType) => {
     soundEffects.playTap();
+    if (targetView !== 'practica') setPracticeError(null);
+    practiceRequestSeq.current++;
     setView(targetView);
   };
 
@@ -300,6 +311,7 @@ export default function App() {
   const due = dueItems(queue);
   const totalDue = due.length;
   const perLesson = perLessonDue(completedLessons, lessonsData, reviewLog);
+  const practiceTargets = selectPracticeTargets(queue, 6);
 
   const noLives = stats.lives <= 0;
   const onStartReview = () => {
@@ -333,6 +345,56 @@ export default function App() {
   };
 
   const levelInfo = getLevelInfo(stats.xp);
+
+  const onGeneratePractice = async () => {
+    if (noLives || practiceLoading || practiceTargets.length === 0) return;
+    const requestId = ++practiceRequestSeq.current;
+    soundEffects.playTap();
+    setPracticeError(null);
+    setPracticeLoading(true);
+    try {
+      const res = await fetch('/api/practice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPracticeRequest(practiceTargets, levelInfo.level)),
+      });
+      if (!res.ok) throw new Error('Practice API error');
+      const json: unknown = await res.json();
+      if (practiceRequestSeq.current !== requestId) return;
+      const exercises = sanitizePracticeExercises(json);
+      if (exercises.length === 0) {
+        setPracticeError('No pudimos crear la práctica ahora mismo. Inténtalo de nuevo.');
+        return;
+      }
+      const lesson = buildPracticeLesson(exercises);
+      // Only mark reviewed the target words that the generated exercises actually drilled,
+      // so a partial or drifted AI batch cannot refresh weak words the learner never practiced.
+      const keys = coveredTargetKeys(practiceTargets, exercises);
+      setPracticeSession({ lesson, keys });
+      setActiveLessonId(null);
+      setView('lesson');
+    } catch {
+      if (practiceRequestSeq.current !== requestId) return;
+      setPracticeError('No pudimos crear la práctica ahora mismo. Inténtalo de nuevo.');
+    } finally {
+      setPracticeLoading(false);
+    }
+  };
+
+  const handlePracticeComplete = (xpReward: number) => {
+    const result = computeLessonCompletion(stats, completedLessons, PRACTICE_SESSION_ID, xpReward);
+    const cleaned = result.completedLessons.filter(id => lessonsData.some(l => l.id === id));
+    setStats(result.stats);
+    setCompletedLessons(cleaned);
+    const newLog = markReviewed(reviewLog, practiceSession?.keys ?? []);
+    setReviewLog(newLog);
+    const earned = result.stats.xp - stats.xp;
+    const newActivity = recordActivity(activityLog, earned, new Date());
+    setActivityLog(newActivity);
+    syncToFirestore(result.stats, cleaned, tutorModel, newLog, newActivity);
+    setPracticeSession(null);
+    setView('practica');
+  };
 
   // Nearest locked achievement for the right rail
   const achievementStatuses = evaluateAchievements(stats, completedLessons);
@@ -377,6 +439,7 @@ export default function App() {
   const navItems: { label: string; emoji: string; targetView: ViewType }[] = [
     { label: 'Camino', emoji: '🗺️', targetView: 'path' },
     { label: 'Repaso', emoji: '🧠', targetView: 'repaso' },
+    { label: 'Práctica', emoji: '✨', targetView: 'practica' },
     { label: 'Tutor', emoji: '🐧', targetView: 'tutor' },
     { label: 'Logros', emoji: '🏆', targetView: 'achievements' },
     { label: 'Progreso', emoji: '📊', targetView: 'progress' },
@@ -414,6 +477,14 @@ export default function App() {
                 onLessonComplete={handleReviewComplete}
                 onLoseLife={handleLoseLife}
                 onQuit={() => { soundEffects.playTap(); setReviewSession(null); setView('repaso'); }}
+              />
+            ) : practiceSession ? (
+              <LessonRunner
+                lesson={practiceSession.lesson}
+                stats={stats}
+                onLessonComplete={handlePracticeComplete}
+                onLoseLife={handleLoseLife}
+                onQuit={() => { soundEffects.playTap(); setPracticeSession(null); setView('practica'); }}
               />
             ) : activeLesson ? (
               <LessonRunner
@@ -692,6 +763,16 @@ export default function App() {
                   totalDue={totalDue}
                   noLives={noLives}
                   onStartReview={onStartReview}
+                />
+              ) : view === 'practica' ? (
+                <PracticeView
+                  targets={practiceTargets}
+                  level={levelInfo.level}
+                  rankTitle={levelInfo.title}
+                  noLives={noLives}
+                  loading={practiceLoading}
+                  error={practiceError}
+                  onGenerate={onGeneratePractice}
                 />
               ) : view === 'tutor' ? (
                 <TutorChat />

@@ -1,6 +1,6 @@
 // BothLingo Core Type Definitions
 
-export type ViewType = 'path' | 'lesson' | 'tutor' | 'settings' | 'achievements' | 'progress' | 'repaso';
+export type ViewType = 'path' | 'lesson' | 'tutor' | 'settings' | 'achievements' | 'progress' | 'repaso' | 'practica';
 
 export interface UserStats {
   xp: number;
