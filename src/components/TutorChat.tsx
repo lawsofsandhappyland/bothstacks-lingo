@@ -68,6 +68,7 @@ export default function TutorChat() {
   const nextPlaybackTimeRef = useRef(0);
   const lineIdRef = useRef(0);
   const speakTimerRef = useRef<number | null>(null);
+  const playingSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
   const addLine = (speaker: TranscriptLine['speaker'], text: string) => {
     const cleanText = text.trim();
@@ -85,6 +86,10 @@ export default function TutorChat() {
   };
 
   const teardownAudio = () => {
+    for (const source of playingSourcesRef.current) {
+      try { source.stop(); } catch { /* already stopped */ }
+    }
+    playingSourcesRef.current = [];
     processorRef.current?.disconnect();
     sourceRef.current?.disconnect();
     streamRef.current?.getTracks().forEach(track => track.stop());
@@ -109,6 +114,24 @@ export default function TutorChat() {
     setStatus('idle');
   };
 
+  // Stop and discard any queued/playing tutor audio. Used for barge-in: when the
+  // server reports the turn was interrupted, the already-buffered reply must be
+  // dropped so the tutor yields immediately instead of talking over the learner.
+  const flushPlayback = () => {
+    for (const source of playingSourcesRef.current) {
+      try { source.stop(); } catch { /* already stopped */ }
+    }
+    playingSourcesRef.current = [];
+    if (outputContextRef.current) {
+      nextPlaybackTimeRef.current = outputContextRef.current.currentTime;
+    }
+    if (speakTimerRef.current !== null) {
+      window.clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = null;
+    }
+    setSpeaking(false);
+  };
+
   const playPcmAudio = (base64Audio: string) => {
     const audioContext = outputContextRef.current;
     if (!audioContext) return;
@@ -124,6 +147,10 @@ export default function TutorChat() {
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(audioContext.destination);
+    playingSourcesRef.current.push(source);
+    source.onended = () => {
+      playingSourcesRef.current = playingSourcesRef.current.filter(s => s !== source);
+    };
 
     const startAt = Math.max(audioContext.currentTime, nextPlaybackTimeRef.current);
     source.start(startAt);
@@ -169,6 +196,11 @@ export default function TutorChat() {
       });
 
       const socket = new WebSocket(`${LIVE_ENDPOINT}?access_token=${encodeURIComponent(token)}`);
+      // The Live API delivers its messages as binary frames; default WebSocket
+      // binaryType is 'blob', which would make JSON.parse(event.data) throw on
+      // every message. Take ArrayBuffers so we can decode them synchronously
+      // (in order) before parsing.
+      socket.binaryType = 'arraybuffer';
 
       inputContextRef.current = inputContext;
       outputContextRef.current = outputContext;
@@ -217,8 +249,25 @@ export default function TutorChat() {
       };
 
       socket.onmessage = event => {
-        const message = JSON.parse(event.data);
+        const raw = typeof event.data === 'string'
+          ? event.data
+          : new TextDecoder().decode(event.data as ArrayBuffer);
+
+        let message;
+        try {
+          message = JSON.parse(raw);
+        } catch {
+          return;
+        }
+
         const serverContent = message.serverContent;
+
+        // Barge-in: the learner started talking over the tutor. Drop the queued
+        // reply so the tutor yields the turn instead of finishing its old answer.
+        if (serverContent?.interrupted) {
+          flushPlayback();
+          return;
+        }
 
         if (serverContent?.inputTranscription?.text) {
           addLine('You', serverContent.inputTranscription.text);
