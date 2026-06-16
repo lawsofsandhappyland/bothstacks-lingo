@@ -30,6 +30,8 @@ from google.adk.tools.preload_memory_tool import PreloadMemoryTool  # Memory Ban
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
+from app.app_utils.constants import APP_NAME
+
 # --- Learner-model state keys (user:-scoped => persist across sessions/days) ---
 LEVEL_KEY = "user:cefr_level"
 FOCUS_KEY = "user:focus_areas"
@@ -193,5 +195,5 @@ root_agent = Agent(
 
 app = App(
     root_agent=root_agent,
-    name="app",
+    name=APP_NAME,
 )
