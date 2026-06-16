@@ -53,7 +53,7 @@ describe('saveUserDoc', () => {
     };
     await saveUserDoc('uid-9', payload);
     expect(vi.mocked(setDoc)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(setDoc)).toHaveBeenCalledWith('DOC_REF', { ...payload, updatedAt: 1700000000000 });
+    expect(vi.mocked(setDoc)).toHaveBeenCalledWith('DOC_REF', { ...payload, updatedAt: 1700000000000 }, { merge: true });
   });
 
   it('builds the doc ref from the given uid', async () => {

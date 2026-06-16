@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { appendChunk, formatTranscript, toSessionTurns, type TranscriptTurn, type SessionTurn } from '../lib/transcript';
 
 const LIVE_MODEL = 'gemini-3.1-flash-live-preview';
 const LIVE_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained';
@@ -7,10 +8,9 @@ const OUTPUT_SAMPLE_RATE = 24000;
 
 type TutorStatus = 'idle' | 'connecting' | 'live' | 'error';
 
-interface TranscriptLine {
-  id: number;
-  speaker: 'You' | 'Tutor';
-  text: string;
+interface TutorChatProps {
+  /** Called once per session (on stop/disconnect) with the full conversation, when non-empty. */
+  onSaveSession?: (turns: SessionTurn[]) => void;
 }
 
 function floatTo16BitPcmBase64(samples: Float32Array, sourceSampleRate: number) {
@@ -53,11 +53,12 @@ function base64ToInt16Array(base64: string) {
  * A voice-practice tutor that fetches a short-lived server token,
  * streams microphone audio over a WebSocket, and plays back the tutor's audio with live transcripts.
  */
-export default function TutorChat() {
+export default function TutorChat({ onSaveSession }: TutorChatProps) {
   const [status, setStatus] = useState<TutorStatus>('idle');
   const [error, setError] = useState('');
-  const [lines, setLines] = useState<TranscriptLine[]>([]);
+  const [lines, setLines] = useState<TranscriptTurn[]>([]);
   const [speaking, setSpeaking] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -66,23 +67,36 @@ export default function TutorChat() {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nextPlaybackTimeRef = useRef(0);
-  const lineIdRef = useRef(0);
   const speakTimerRef = useRef<number | null>(null);
   const playingSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const turnsRef = useRef<TranscriptTurn[]>([]);
+  const savedRef = useRef(false);
 
-  const addLine = (speaker: TranscriptLine['speaker'], text: string) => {
-    const cleanText = text.trim();
-    if (!cleanText) return;
+  // Append a streaming transcription chunk, grouping consecutive same-speaker
+  // chunks into one turn (otherwise each chunk renders as its own fragment line).
+  const pushChunk = (speaker: TranscriptTurn['speaker'], text: string) => {
+    turnsRef.current = appendChunk(turnsRef.current, speaker, text);
+    setLines(turnsRef.current);
+  };
 
-    lineIdRef.current += 1;
-    setLines(prev => [
-      ...prev.slice(-7),
-      {
-        id: lineIdRef.current,
-        speaker,
-        text: cleanText
-      }
-    ]);
+  // Persist the session transcript once, on stop or disconnect, if it has content.
+  const saveCurrentSession = () => {
+    if (savedRef.current) return;
+    const sessionTurns = toSessionTurns(turnsRef.current);
+    if (sessionTurns.length === 0) return;
+    savedRef.current = true;
+    onSaveSession?.(sessionTurns);
+  };
+
+  const handleCopyTranscript = () => {
+    const text = formatTranscript(turnsRef.current);
+    if (!text || !navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => { /* clipboard unavailable */ });
   };
 
   const teardownAudio = () => {
@@ -108,6 +122,7 @@ export default function TutorChat() {
   };
 
   const stopSession = () => {
+    saveCurrentSession();
     socketRef.current?.close();
     socketRef.current = null;
     teardownAudio();
@@ -244,6 +259,8 @@ export default function TutorChat() {
         sourceRef.current = source;
         processorRef.current = processor;
 
+        turnsRef.current = [];
+        savedRef.current = false;
         setLines([]);
         setStatus('live');
       };
@@ -270,11 +287,11 @@ export default function TutorChat() {
         }
 
         if (serverContent?.inputTranscription?.text) {
-          addLine('You', serverContent.inputTranscription.text);
+          pushChunk('You', serverContent.inputTranscription.text);
         }
 
         if (serverContent?.outputTranscription?.text) {
-          addLine('Tutor', serverContent.outputTranscription.text);
+          pushChunk('Tutor', serverContent.outputTranscription.text);
         }
 
         const parts = serverContent?.modelTurn?.parts || [];
@@ -295,6 +312,7 @@ export default function TutorChat() {
         // Ignore close events from a superseded/stopped socket so they don't
         // tear down a newer session that reused the shared refs.
         if (socketRef.current !== socket) return;
+        saveCurrentSession();
         teardownAudio();
         setStatus(prev => (prev === 'error' ? 'error' : 'idle'));
       };
@@ -461,7 +479,17 @@ export default function TutorChat() {
 
       {/* Transcript card */}
       <div className="arcade-card p-5 flex flex-col gap-3">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">Conversación</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">Conversación</span>
+          {lines.length > 0 && (
+            <button
+              onClick={handleCopyTranscript}
+              className="font-mono text-[10px] font-bold uppercase tracking-widest text-body-lifted hover:text-ghost-white transition-colors"
+            >
+              {copied ? '✓ Copiado' : '📋 Copiar'}
+            </button>
+          )}
+        </div>
 
         {lines.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center gap-2 py-8">
@@ -470,21 +498,27 @@ export default function TutorChat() {
             <p className="text-[12px] text-muted">Empieza con saludos, café o tu próximo despliegue. Sin prisa, sin notas.</p>
           </div>
         ) : (
-          lines.map(line => (
-            <div
-              key={line.id}
-              className={`rounded-xl border p-3 ${line.speaker === 'You' ? 'ml-8 text-right' : 'mr-8 text-left'}`}
-              style={{
-                backgroundColor: line.speaker === 'You' ? 'rgba(232,57,246,0.12)' : 'rgba(255,255,255,0.04)',
-                borderColor: line.speaker === 'You' ? 'var(--color-fuchsia-accent)' : 'var(--color-raised-edge)',
-              }}
-            >
-              <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-muted block">
-                {line.speaker === 'You' ? 'Tú' : 'El Pingüino'}
-              </span>
-              <p className="text-sm font-bold leading-relaxed">{line.text}</p>
-            </div>
-          ))
+          <div className="flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: 360 }}>
+            {lines.map((line, index) => {
+              const text = line.text.trim();
+              if (!text) return null;
+              return (
+                <div
+                  key={index}
+                  className={`rounded-xl border p-3 ${line.speaker === 'You' ? 'ml-8 text-right' : 'mr-8 text-left'}`}
+                  style={{
+                    backgroundColor: line.speaker === 'You' ? 'rgba(232,57,246,0.12)' : 'rgba(255,255,255,0.04)',
+                    borderColor: line.speaker === 'You' ? 'var(--color-fuchsia-accent)' : 'var(--color-raised-edge)',
+                  }}
+                >
+                  <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-muted block">
+                    {line.speaker === 'You' ? 'Tú' : 'El Pingüino'}
+                  </span>
+                  <p className="text-sm font-bold leading-relaxed">{text}</p>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

@@ -5,6 +5,8 @@ import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
 import { getAuthReady } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
+import type { TutorSession } from './lib/persistence';
+import type { SessionTurn } from './lib/transcript';
 import { buildReviewQueue, dueItems, perLessonDue, collectVocab, markReviewed, selectReviewBatch } from './lib/review';
 import type { ReviewLog } from './lib/review';
 import { recordActivity, dayKey } from './lib/analytics';
@@ -35,7 +37,10 @@ const STORAGE_KEYS = {
   MODEL: 'bothlingo_tutor_model',
   REVIEW_LOG: 'bothlingo_review_log',
   ACTIVITY_LOG: 'bothlingo_activity_log',
+  TUTOR_SESSIONS: 'bothlingo_tutor_sessions',
 };
+
+const MAX_TUTOR_SESSIONS = 20;
 
 const LEGACY_API_KEY_STORAGE_KEY = 'bothlingo_gemini_key';
 
@@ -103,6 +108,7 @@ export default function App() {
   const [practiceLoading, setPracticeLoading] = useState(false);
   const [practiceError, setPracticeError] = useState<string | null>(null);
   const practiceRequestSeq = useRef(0);
+  const [tutorSessions, setTutorSessions] = useState<TutorSession[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
       return !localStorage.getItem('bothlingo_onboarded');
@@ -128,6 +134,7 @@ export default function App() {
         const seededStored = seedLegacyActivity(readStoredJson<ActivityLog>(STORAGE_KEYS.ACTIVITY_LOG, {}), regenedStored, storedCompleted);
         setActivityLog(seededStored);
         try { localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOG, JSON.stringify(seededStored)); } catch { /* ignore */ }
+        setTutorSessions(readStoredJson<TutorSession[]>(STORAGE_KEYS.TUTOR_SESSIONS, []));
         setLoading(false);
         return;
       }
@@ -144,6 +151,7 @@ export default function App() {
         const baseRemoteLog = remote.activityLog ?? {};
         const seededRemoteLog = seedLegacyActivity(baseRemoteLog, regened, remote.completedLessons);
         setActivityLog(seededRemoteLog);
+        setTutorSessions(remote.tutorSessions ?? []);
         // Persist a regen change (or a legacy activity backfill) BEFORE unblocking
         // interaction so this bootstrap write cannot race with (and clobber) a
         // quick first user action.
@@ -166,6 +174,7 @@ export default function App() {
       const localModel = readStoredText(STORAGE_KEYS.MODEL, DEFAULT_TUTOR_MODEL);
       const localReviewLog = readStoredJson<ReviewLog>(STORAGE_KEYS.REVIEW_LOG, {});
       const localActivityLog = readStoredJson<ActivityLog>(STORAGE_KEYS.ACTIVITY_LOG, {});
+      const localTutorSessions = readStoredJson<TutorSession[]>(STORAGE_KEYS.TUTOR_SESSIONS, []);
 
       const regenedLocal = regenerateLives(localStats, new Date());
       const seededLocalLog = seedLegacyActivity(localActivityLog, regenedLocal, localCompleted);
@@ -174,6 +183,7 @@ export default function App() {
       setTutorModel(localModel);
       setReviewLog(localReviewLog);
       setActivityLog(seededLocalLog);
+      setTutorSessions(localTutorSessions);
       setLoading(false);
 
       // Seed Firestore with the regenerated local data (persists the regen anchor)
@@ -183,6 +193,7 @@ export default function App() {
         tutorModel: localModel,
         reviewLog: localReviewLog,
         activityLog: seededLocalLog,
+        tutorSessions: localTutorSessions,
       }).catch(() => {});
 
       // Clear localStorage after migration
@@ -191,6 +202,7 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEYS.MODEL);
       localStorage.removeItem(STORAGE_KEYS.REVIEW_LOG);
       localStorage.removeItem(STORAGE_KEYS.ACTIVITY_LOG);
+      localStorage.removeItem(STORAGE_KEYS.TUTOR_SESSIONS);
     });
   }, []);
 
@@ -269,6 +281,7 @@ export default function App() {
     localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEYS.REVIEW_LOG);
     localStorage.removeItem(STORAGE_KEYS.ACTIVITY_LOG);
+    localStorage.removeItem(STORAGE_KEYS.TUTOR_SESSIONS);
 
     const resetStatsValue = resetStats();
     const emptyLog: ReviewLog = {};
@@ -280,14 +293,31 @@ export default function App() {
     setActivityLog(emptyActivity);
     setPracticeSession(null);
     setPracticeError(null);
+    setTutorSessions([]);
     setView('path');
 
     syncToFirestore(resetStatsValue, [], tutorModel, emptyLog, emptyActivity);
+    // merge-mode save won't drop omitted fields, so clear tutorSessions explicitly.
+    if (uid) saveUserDoc(uid, { tutorSessions: [] }).catch((err) => console.error('Firestore save failed', err));
   };
 
   const handleSetTutorModel = (m: string) => {
     setTutorModel(m);
     syncToFirestore(stats, completedLessons, m, reviewLog, activityLog);
+  };
+
+  // Persist a completed voice-tutor conversation (newest first, capped). Saved on
+  // its own merge path so it does not depend on threading through syncToFirestore.
+  const handleSaveTutorSession = (turns: SessionTurn[]) => {
+    if (turns.length === 0) return;
+    const session: TutorSession = { startedAt: new Date().toISOString(), turns };
+    const next = [session, ...tutorSessions].slice(0, MAX_TUTOR_SESSIONS);
+    setTutorSessions(next);
+    if (uid) {
+      saveUserDoc(uid, { tutorSessions: next }).catch((err) => console.error('Firestore save failed', err));
+    } else {
+      try { localStorage.setItem(STORAGE_KEYS.TUTOR_SESSIONS, JSON.stringify(next)); } catch { /* ignore */ }
+    }
   };
 
   const completeOnboarding = () => {
@@ -775,7 +805,7 @@ export default function App() {
                   onGenerate={onGeneratePractice}
                 />
               ) : view === 'tutor' ? (
-                <TutorChat />
+                <TutorChat onSaveSession={handleSaveTutorSession} />
               ) : view === 'achievements' ? (
                 <AchievementsView stats={stats} completedLessons={completedLessons} />
               ) : view === 'progress' ? (
