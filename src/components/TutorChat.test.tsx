@@ -114,7 +114,11 @@ describe('TutorChat', () => {
 
     await user.click(screen.getByRole('button', { name: /empezar a hablar/i }));
 
-    expect(fetch).toHaveBeenCalledWith('/api/live-token', { method: 'POST' });
+    expect(fetch).toHaveBeenCalledWith('/api/live-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
 
     await waitFor(() => {
       expect(FakeWebSocket.instances.length).toBe(1);

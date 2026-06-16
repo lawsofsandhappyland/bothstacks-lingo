@@ -8,6 +8,8 @@ android
 src
 public
 docs
+# Python ADK tutor agent project (incl. a ~1GB .venv) — not part of the web build.
+bothlingo-tutor
 *.md
 capacitor.config.ts
 eslint.config.js

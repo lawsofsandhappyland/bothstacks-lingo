@@ -4,6 +4,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { basename, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
+import { retrieveMemories, generateMemories, memoryEnabled } from './memory.mjs';
 
 /**
  * BothStacks Lingo production server. Serves built dist/ static files via Content-Type routing,
@@ -103,10 +104,12 @@ ${userText}`;
 }
 
 /**
- * Build a system instruction for the Gemini Live voice API endpoint.
+ * Build a system instruction for the Gemini Live voice API endpoint, optionally
+ * personalised with the learner's long-term memories so a returning learner is
+ * greeted by what they were working on instead of starting cold.
  */
-function buildLiveSystemInstruction() {
-  return `You are El Pinguino, the BothStacks Spanish speaking coach.
+function buildLiveSystemInstruction(memories = []) {
+  const base = `You are El Pinguino, the BothStacks Spanish speaking coach.
 This is a live voice conversation. Help the learner practice Spanish out loud.
 
 Rules:
@@ -116,6 +119,16 @@ Rules:
 - Correct pronunciation, grammar, or vocabulary gently.
 - Prefer practical Spanish for daily conversation, coding, Linux, cloud work, coffee, and travel.
 - Do not ask for secrets or API keys.`;
+
+  if (!memories.length) return base;
+
+  const recall = memories.map(fact => `- ${fact}`).join('\n');
+  return `${base}
+
+What you remember about this learner from past sessions:
+${recall}
+
+Use this naturally: greet a returning learner warmly, pick up from what they were working on, and tailor difficulty and topics to them. Do not recite the list back verbatim.`;
 }
 
 /**
@@ -335,7 +348,7 @@ async function handlePractice(request, response) {
 /**
  * Handle POST /api/live-token requests, creating and returning a Gemini Live API session token.
  */
-async function handleLiveToken(_request, response) {
+async function handleLiveToken(request, response) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -344,6 +357,18 @@ async function handleLiveToken(_request, response) {
     });
     return;
   }
+
+  // The learner's uid lets us personalise the persona with their long-term
+  // memory. Body is optional; an anonymous/first-time learner just gets the base.
+  let userId = '';
+  try {
+    const body = await readRequestJson(request);
+    userId = String(body.userId || '').slice(0, 128);
+  } catch {
+    userId = '';
+  }
+
+  const memories = userId && memoryEnabled() ? await retrieveMemories(userId) : [];
 
   const client = new GoogleGenAI({
     apiKey,
@@ -366,7 +391,7 @@ async function handleLiveToken(_request, response) {
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           systemInstruction: {
-            parts: [{ text: buildLiveSystemInstruction() }]
+            parts: [{ text: buildLiveSystemInstruction(memories) }]
           }
         }
       },
@@ -377,8 +402,40 @@ async function handleLiveToken(_request, response) {
   sendJson(response, 200, {
     token: token.name,
     model: liveModel,
-    expiresAt: expireTime
+    expiresAt: expireTime,
+    memoryCount: memories.length
   });
+}
+
+/**
+ * Handle POST /api/tutor-memory requests: send a finished voice transcript to
+ * Memory Bank so the learner's long-term memory grows for future sessions.
+ */
+async function handleTutorMemory(request, response) {
+  if (!memoryEnabled()) {
+    sendJson(response, 200, { ok: false, reason: 'memory_disabled' });
+    return;
+  }
+
+  const body = await readRequestJson(request);
+  const userId = String(body.userId || '').slice(0, 128);
+  const turns = Array.isArray(body.turns)
+    ? body.turns
+        .filter(turn => turn && (turn.speaker === 'user' || turn.speaker === 'tutor') && typeof turn.text === 'string')
+        .map(turn => ({ speaker: turn.speaker, text: String(turn.text).slice(0, 4000) }))
+    : [];
+
+  if (!userId) {
+    sendJson(response, 400, { error: 'userId is required.' });
+    return;
+  }
+  if (turns.length === 0) {
+    sendJson(response, 400, { error: 'turns must contain at least one entry.' });
+    return;
+  }
+
+  const ok = await generateMemories(userId, turns);
+  sendJson(response, 200, { ok });
 }
 
 /**
@@ -413,6 +470,11 @@ async function serveStatic(request, response) {
 
 const server = createServer(async (request, response) => {
   try {
+    if (request.url?.startsWith('/api/tutor-memory') && request.method === 'POST') {
+      await handleTutorMemory(request, response);
+      return;
+    }
+
     if (request.url?.startsWith('/api/tutor') && request.method === 'POST') {
       await handleTutor(request, response);
       return;

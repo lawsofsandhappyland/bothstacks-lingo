@@ -18,5 +18,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Only our own app tests. Keeps vitest out of the Python ADK agent project
+    // (bothlingo-tutor/.venv ships its own .test.ts template files).
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 })

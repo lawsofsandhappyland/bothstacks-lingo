@@ -315,6 +315,13 @@ export default function App() {
     setTutorSessions(next);
     if (uid) {
       saveUserDoc(uid, { tutorSessions: next }).catch((err) => console.error('Firestore save failed', err));
+      // Grow the learner's long-term memory (Vertex AI Memory Bank) from this
+      // conversation so the next voice session picks up where this one left off.
+      fetch('/api/tutor-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, turns }),
+      }).catch((err) => console.error('Memory ingest failed', err));
     } else {
       try { localStorage.setItem(STORAGE_KEYS.TUTOR_SESSIONS, JSON.stringify(next)); } catch { /* ignore */ }
     }
@@ -805,7 +812,7 @@ export default function App() {
                   onGenerate={onGeneratePractice}
                 />
               ) : view === 'tutor' ? (
-                <TutorChat onSaveSession={handleSaveTutorSession} />
+                <TutorChat userId={uid ?? undefined} onSaveSession={handleSaveTutorSession} />
               ) : view === 'achievements' ? (
                 <AchievementsView stats={stats} completedLessons={completedLessons} />
               ) : view === 'progress' ? (
