@@ -26,7 +26,7 @@ vi.mock('./lib/audio', () => ({
   },
 }));
 
-vi.mock('./lib/firebase', () => ({ getAuthReady: vi.fn() }));
+vi.mock('./lib/firebase', () => ({ getAuthReady: vi.fn(), getIdToken: vi.fn() }));
 vi.mock('./lib/persistence', () => ({ loadUserDoc: vi.fn(), saveUserDoc: vi.fn() }));
 
 beforeEach(() => {

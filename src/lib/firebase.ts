@@ -59,5 +59,18 @@ function getAuthReady(): Promise<User | null> {
   return authReadyPromise;
 }
 
-export { auth, db, getAuthReady, currentUser };
+/**
+ * Returns a fresh Firebase ID token for the current user, or null if signed out
+ * or the token cannot be minted. Used to authenticate calls to the server's /api
+ * endpoints (the server verifies it with firebase-admin).
+ */
+async function getIdToken(): Promise<string | null> {
+  try {
+    return (await auth.currentUser?.getIdToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export { auth, db, getAuthReady, currentUser, getIdToken };
 export type { User, Firestore };

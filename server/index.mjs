@@ -5,6 +5,8 @@ import { basename, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
 import { retrieveMemories, generateMemories, memoryEnabled } from './memory.mjs';
+import { verifyIdToken, getLearnerProfile, saveLearnerProfile } from './firebase-admin.mjs';
+import { extractLearnerProfile, formatLearnerProfileForPersona } from './learner-profile.mjs';
 
 /**
  * BothStacks Lingo production server. Serves built dist/ static files via Content-Type routing,
@@ -108,7 +110,7 @@ ${userText}`;
  * personalised with the learner's long-term memories so a returning learner is
  * greeted by what they were working on instead of starting cold.
  */
-function buildLiveSystemInstruction(memories = []) {
+function buildLiveSystemInstruction(memories = [], profile = null) {
   const base = `You are El Pinguino, the BothStacks Spanish speaking coach.
 This is a live voice conversation. Help the learner practice Spanish out loud.
 
@@ -120,15 +122,13 @@ Rules:
 - Prefer practical Spanish for daily conversation, coding, Linux, cloud work, coffee, and travel.
 - Do not ask for secrets or API keys.`;
 
-  if (!memories.length) return base;
+  const profileBlock = formatLearnerProfileForPersona(profile);
+  const recall = memories.length
+    ? `\n\nWhat you remember about this learner from past sessions:\n${memories.map(fact => `- ${fact}`).join('\n')}\n\nUse this naturally: greet a returning learner warmly, pick up from what they were working on, and tailor difficulty and topics to them. Do not recite the list back verbatim.`
+    : '';
 
-  const recall = memories.map(fact => `- ${fact}`).join('\n');
-  return `${base}
-
-What you remember about this learner from past sessions:
-${recall}
-
-Use this naturally: greet a returning learner warmly, pick up from what they were working on, and tailor difficulty and topics to them. Do not recite the list back verbatim.`;
+  if (!profileBlock && !recall) return base;
+  return `${base}${profileBlock ? `\n\n${profileBlock}` : ''}${recall}`;
 }
 
 /**
@@ -358,17 +358,20 @@ async function handleLiveToken(request, response) {
     return;
   }
 
-  // The learner's uid lets us personalise the persona with their long-term
-  // memory. Body is optional; an anonymous/first-time learner just gets the base.
-  let userId = '';
+  // The learner's Firebase ID token lets us personalise the persona. We verify it
+  // server-side rather than trusting a client-supplied id. An anonymous/first-time
+  // learner (no/invalid token) just gets the base persona.
+  let idToken = '';
   try {
     const body = await readRequestJson(request);
-    userId = String(body.userId || '').slice(0, 128);
+    idToken = String(body.idToken || '');
   } catch {
-    userId = '';
+    idToken = '';
   }
+  const uid = await verifyIdToken(idToken);
 
-  const memories = userId && memoryEnabled() ? await retrieveMemories(userId) : [];
+  const memories = uid && memoryEnabled() ? await retrieveMemories(uid) : [];
+  const profile = uid ? await getLearnerProfile(uid) : null;
 
   const client = new GoogleGenAI({
     apiKey,
@@ -391,7 +394,7 @@ async function handleLiveToken(request, response) {
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           systemInstruction: {
-            parts: [{ text: buildLiveSystemInstruction(memories) }]
+            parts: [{ text: buildLiveSystemInstruction(memories, profile) }]
           }
         }
       },
@@ -403,7 +406,8 @@ async function handleLiveToken(request, response) {
     token: token.name,
     model: liveModel,
     expiresAt: expireTime,
-    memoryCount: memories.length
+    memoryCount: memories.length,
+    personalized: Boolean(uid)
   });
 }
 
@@ -418,15 +422,16 @@ async function handleTutorMemory(request, response) {
   }
 
   const body = await readRequestJson(request);
-  const userId = String(body.userId || '').slice(0, 128);
+  const idToken = String(body.idToken || '');
   const turns = Array.isArray(body.turns)
     ? body.turns
         .filter(turn => turn && (turn.speaker === 'user' || turn.speaker === 'tutor') && typeof turn.text === 'string')
         .map(turn => ({ speaker: turn.speaker, text: String(turn.text).slice(0, 4000) }))
     : [];
 
-  if (!userId) {
-    sendJson(response, 400, { error: 'userId is required.' });
+  const uid = await verifyIdToken(idToken);
+  if (!uid) {
+    sendJson(response, 401, { error: 'Unauthorized.' });
     return;
   }
   if (turns.length === 0) {
@@ -434,8 +439,21 @@ async function handleTutorMemory(request, response) {
     return;
   }
 
-  const ok = await generateMemories(userId, turns);
-  sendJson(response, 200, { ok });
+  // Free-form long-term memory (Vertex AI Memory Bank) for cross-session recall.
+  const ok = await generateMemories(uid, turns);
+
+  // Structured learner model (CEFR, focus areas, goals, summary) for the voice
+  // persona: extract a delta from this transcript and persist it to Firestore.
+  let profileUpdated = false;
+  try {
+    const current = await getLearnerProfile(uid);
+    const profile = await extractLearnerProfile(turns, current);
+    profileUpdated = await saveLearnerProfile(uid, profile);
+  } catch (error) {
+    console.warn('Profile update failed:', String(error.message || error).slice(0, 160));
+  }
+
+  sendJson(response, 200, { ok, profileUpdated });
 }
 
 /**

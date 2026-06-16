@@ -3,7 +3,7 @@ import type { ViewType, UserStats, Lesson } from './types';
 import { DEFAULT_STATS, computeLessonCompletion, loseLife, resetStats, regenerateLives, dailyGoalProgress, DAILY_XP_GOAL } from './lib/progress';
 import { lessonsData } from './lib/lessons';
 import { soundEffects } from './lib/audio';
-import { getAuthReady } from './lib/firebase';
+import { getAuthReady, getIdToken } from './lib/firebase';
 import { loadUserDoc, saveUserDoc } from './lib/persistence';
 import type { TutorSession } from './lib/persistence';
 import type { SessionTurn } from './lib/transcript';
@@ -315,12 +315,16 @@ export default function App() {
     setTutorSessions(next);
     if (uid) {
       saveUserDoc(uid, { tutorSessions: next }).catch((err) => console.error('Firestore save failed', err));
-      // Grow the learner's long-term memory (Vertex AI Memory Bank) from this
-      // conversation so the next voice session picks up where this one left off.
-      fetch('/api/tutor-memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: uid, turns }),
+      // Grow the learner's long-term memory (Vertex AI Memory Bank) + structured
+      // profile from this conversation. Authenticated with a verified ID token so
+      // the server attributes it to a real uid, not a client-supplied string.
+      getIdToken().then(idToken => {
+        if (!idToken) return;
+        fetch('/api/tutor-memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, turns }),
+        }).catch((err) => console.error('Memory ingest failed', err));
       }).catch((err) => console.error('Memory ingest failed', err));
     } else {
       try { localStorage.setItem(STORAGE_KEYS.TUTOR_SESSIONS, JSON.stringify(next)); } catch { /* ignore */ }
@@ -812,7 +816,7 @@ export default function App() {
                   onGenerate={onGeneratePractice}
                 />
               ) : view === 'tutor' ? (
-                <TutorChat userId={uid ?? undefined} onSaveSession={handleSaveTutorSession} />
+                <TutorChat getToken={getIdToken} onSaveSession={handleSaveTutorSession} />
               ) : view === 'achievements' ? (
                 <AchievementsView stats={stats} completedLessons={completedLessons} />
               ) : view === 'progress' ? (

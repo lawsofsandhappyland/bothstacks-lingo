@@ -9,8 +9,8 @@ const OUTPUT_SAMPLE_RATE = 24000;
 type TutorStatus = 'idle' | 'connecting' | 'live' | 'error';
 
 interface TutorChatProps {
-  /** Learner uid, sent so the live persona can be personalised from long-term memory. */
-  userId?: string;
+  /** Returns a fresh Firebase ID token so the server can verify the learner and personalise the persona. */
+  getToken?: () => Promise<string | null>;
   /** Called once per session (on stop/disconnect) with the full conversation, when non-empty. */
   onSaveSession?: (turns: SessionTurn[]) => void;
 }
@@ -55,7 +55,7 @@ function base64ToInt16Array(base64: string) {
  * A voice-practice tutor that fetches a short-lived server token,
  * streams microphone audio over a WebSocket, and plays back the tutor's audio with live transcripts.
  */
-export default function TutorChat({ userId, onSaveSession }: TutorChatProps) {
+export default function TutorChat({ getToken, onSaveSession }: TutorChatProps) {
   const [status, setStatus] = useState<TutorStatus>('idle');
   const [error, setError] = useState('');
   const [lines, setLines] = useState<TranscriptTurn[]>([]);
@@ -192,10 +192,11 @@ export default function TutorChat({ userId, onSaveSession }: TutorChatProps) {
     setError('');
 
     try {
+      const idToken = getToken ? await getToken() : null;
       const tokenResponse = await fetch('/api/live-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userId ? { userId } : {})
+        body: JSON.stringify(idToken ? { idToken } : {})
       });
       if (!tokenResponse.ok) {
         throw new Error('No pudimos conectar con el tutor. Inténtalo de nuevo en un momento.');
